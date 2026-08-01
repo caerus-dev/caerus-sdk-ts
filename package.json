@@ -1,0 +1,42 @@
+{
+  "name": "@caerus-dev/sdk",
+  "version": "0.1.0",
+  "description": "Caerus SDK for Node.js — Shared Resource Engine client",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "proto:generate": "node scripts/generate-proto.mjs",
+    "clean": "node scripts/clean.mjs",
+    "prebuild": "npm run proto:generate",
+    "build": "tsup",
+    "pretypecheck": "npm run proto:generate",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.12.6"
+  },
+  "devDependencies": {
+    "grpc-tools": "^1.13.0",
+    "ts-proto": "^2.6.1",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
