@@ -135,7 +135,7 @@ queued reservation is not holding anything yet, and running your payment against
 charge a card for a seat the customer does not have. Use `take` if you want to handle
 queueing yourself.
 
-Full example: [`examples/01-reserve.ts`](examples/01-reserve.ts)
+More in `examples/01-reserve.ts`, in the repository.
 
 ---
 
@@ -164,7 +164,7 @@ Use these when a hold has to outlive a single function — taken on one HTTP req
 confirmed on another. Everywhere else `reserve` is less code and cannot forget the
 release.
 
-Full example: [`examples/02-manual-lifecycle.ts`](examples/02-manual-lifecycle.ts)
+More in `examples/02-manual-lifecycle.ts`, in the repository.
 
 #### What a reservation looks like
 
@@ -205,7 +205,7 @@ Templates — hold duration, whether metadata is kept, what happens when stock r
 live in the Caerus dashboard. The concrete resources that follow those rules are created
 here, and only here.
 
-Full example: [`examples/03-inventory.ts`](examples/03-inventory.ts)
+More in `examples/03-inventory.ts`, in the repository.
 
 ---
 
@@ -244,7 +244,7 @@ try {
 Switching on `code` instead of the class needs both cases spelled out: `OUT_OF_STOCK`
 does not also match `CONFLICT`.
 
-Full example: [`examples/04-errors.ts`](examples/04-errors.ts)
+More in `examples/04-errors.ts`, in the repository.
 
 ---
 
@@ -291,7 +291,7 @@ caerus.clearFailures();
 Also available: `expire(reservationId)` for one reservation, and `snapshot()` for
 assertions the API cannot make.
 
-Full example: [`examples/05-testing.ts`](examples/05-testing.ts)
+More in `examples/05-testing.ts`, in the repository.
 
 ---
 
