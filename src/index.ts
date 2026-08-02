@@ -9,6 +9,18 @@
 export { CaerusClient } from './client.js';
 export { DEFAULT_TIMEOUT_MS, type CaerusClientOptions } from './options.js';
 
+export type {
+  ConfirmOptions,
+  CreateResourceOptions,
+  GetResourcesByGroupOptions,
+  Metadata,
+  Reservation,
+  ReservationStatus,
+  Resource,
+  ResourcePage,
+  TakeOptions,
+} from './types.js';
+
 export {
   CaerusError,
   ResourceNotFoundError,
