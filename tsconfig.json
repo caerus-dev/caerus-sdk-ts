@@ -15,7 +15,9 @@
     "types": ["node"],
     // Lets the examples import the package by the name a user would type, while still
     // being checked against the source in this repository.
-    "baseUrl": ".",
+    //
+    // No baseUrl: since TypeScript 4.4 a relative path here resolves against this file,
+    // and setting one only brings the deprecation warning along.
     "paths": {
       "@caerus-dev/sdk": ["./src/index.ts"]
     }
