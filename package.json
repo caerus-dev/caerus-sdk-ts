@@ -26,6 +26,7 @@
     "clean": "node scripts/clean.mjs",
     "prebuild": "npm run generate",
     "build": "tsup",
+    "postbuild": "node scripts/check-public-api.mjs",
     "pretypecheck": "npm run generate",
     "typecheck": "tsc --noEmit",
     "pretest": "npm run generate",
