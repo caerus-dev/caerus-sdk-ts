@@ -5,10 +5,12 @@
 //
 // The output is not committed either. It is regenerated before every build, which is
 // what keeps it from drifting away from the contract.
+//
+// ts-proto does the generating; buf only supplies the compiler. See buf.gen.yaml.
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, rmSync, existsSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { rmSync, existsSync } from 'node:fs';
+import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -16,24 +18,12 @@ const protoDir = resolve(packageRoot, '..', 'data-plane-service', 'src', 'main',
 const protoFile = join(protoDir, 'sre_service.proto');
 const outDir = join(packageRoot, 'src', 'generated');
 
-const isWindows = process.platform === 'win32';
+const binDir = join(packageRoot, 'node_modules', '.bin');
 
-// The protoc binary that grpc-tools ships, invoked directly rather than through its npm
-// shim: the shim goes via a shell, and this repository lives under a path with a space
-// in it, which the shell splits.
-const protocDir = join(packageRoot, 'node_modules', 'grpc-tools', 'bin');
-const protoc = join(protocDir, `protoc${isWindows ? '.exe' : ''}`);
-
-// Where that same package keeps google/protobuf/empty.proto, which our contract imports.
-const wellKnownTypesDir = protocDir;
-
-// npm bin shims are .cmd on Windows; protoc has to be handed the runnable one.
-const tsProtoPlugin = join(
-  packageRoot,
-  'node_modules',
-  '.bin',
-  `protoc-gen-ts_proto${isWindows ? '.cmd' : ''}`,
-);
+// The package entry point rather than the .bin shim: on Windows the shim is a .cmd,
+// which Node refuses to spawn without a shell, and a shell would split the repository
+// path on its space. This file is plain Node, so it runs the same everywhere.
+const buf = join(packageRoot, 'node_modules', '@bufbuild', 'buf', 'bin', 'buf');
 
 function fail(message) {
   console.error(`\n  proto generation failed: ${message}\n`);
@@ -43,40 +33,25 @@ function fail(message) {
 if (!existsSync(protoFile)) {
   fail(`the contract is not where it should be: ${protoFile}`);
 }
-if (!existsSync(protoc)) {
-  fail('grpc-tools is not installed. Run npm install first.');
-}
-if (!existsSync(tsProtoPlugin)) {
-  fail('ts-proto is not installed. Run npm install first.');
+if (!existsSync(buf)) {
+  fail('dependencies are missing. Run npm install first.');
 }
 
 rmSync(outDir, { recursive: true, force: true });
-mkdirSync(outDir, { recursive: true });
-
-const options = [
-  // Client stubs for @grpc/grpc-js, which is what the SDK talks to.
-  'outputServices=grpc-js',
-  'esModuleInterop=true',
-  // No server-side scaffolding: this package is a client.
-  'outputServerImpl=false',
-  // Keeps the generated tree free of runtime helpers we do not use.
-  'useOptionals=messages',
-].join(',');
 
 try {
-  execFileSync(
-    protoc,
-    [
-      `--plugin=protoc-gen-ts_proto=${tsProtoPlugin}`,
-      `--ts_proto_out=${outDir}`,
-      `--ts_proto_opt=${options}`,
-      `--proto_path=${protoDir}`,
-      protoFile,
-    ],
-    { stdio: 'inherit', shell: process.platform === 'win32' },
-  );
+  execFileSync(process.execPath, [buf, 'generate', protoDir], {
+    cwd: packageRoot,
+    stdio: 'inherit',
+    // buf resolves the ts-proto plugin by name, so its shim has to be findable.
+    env: { ...process.env, PATH: `${binDir}${delimiter}${process.env.PATH}` },
+  });
 } catch (error) {
   fail(error.message);
+}
+
+if (!existsSync(join(outDir, 'sre_service.ts'))) {
+  fail('buf reported success but produced no client');
 }
 
 console.log(`generated the gRPC client into src/generated from ${protoFile}`);

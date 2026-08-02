@@ -1,0 +1,15 @@
+# How the gRPC client is generated from the contract.
+#
+# The generator is ts-proto: it emits real TypeScript interfaces from the .proto,
+# which is the whole reason for shipping a typed SDK instead of a thin wrapper.
+#
+# buf only supplies the compiler. The protoc that grpc-tools bundles fails to start
+# on Windows with a missing DLL, and buf ships a self-contained binary instead.
+version: v2
+plugins:
+  - local: protoc-gen-ts_proto
+    out: src/generated
+    opt:
+      # Client stubs for @grpc/grpc-js, which is what the SDK talks to.
+      - outputServices=grpc-js
+      - esModuleInterop=true

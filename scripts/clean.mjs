@@ -4,6 +4,6 @@ import { fileURLToPath } from 'node:url';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-for (const target of ['dist', join('src', 'generated')]) {
+for (const target of ['dist', join('src', 'generated'), join('src', 'version.ts')]) {
   rmSync(join(packageRoot, target), { recursive: true, force: true });
 }
