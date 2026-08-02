@@ -24,7 +24,7 @@
     "proto:generate": "node scripts/generate-proto.mjs",
     "version:generate": "node scripts/generate-version.mjs",
     "clean": "node scripts/clean.mjs",
-    "prebuild": "npm run generate",
+    "prebuild": "npm run typecheck",
     "build": "tsup",
     "postbuild": "node scripts/check-public-api.mjs",
     "pretypecheck": "npm run generate",
