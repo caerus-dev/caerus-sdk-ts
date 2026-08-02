@@ -29,6 +29,7 @@ describe('the transport, against a real gRPC server', () => {
   });
 
   beforeEach(() => {
+    engine.reset();
     transport?.close();
     transport = new Transport(
       resolveOptions({ endpoint: engine.endpoint, apiKey: API_KEY, tls: false }),
@@ -40,7 +41,7 @@ describe('the transport, against a real gRPC server', () => {
   }
 
   it('sends the API Key as a bearer token in the metadata', async () => {
-    engine.respondWith((_call, callback) => callback(null, aResourceResponse()));
+    engine.on('getResource', (_call, callback) => callback(null, aResourceResponse()));
 
     await getResource();
 
@@ -49,7 +50,7 @@ describe('the transport, against a real gRPC server', () => {
 
   /** The environment comes from the key, so nothing else should be identifying it. */
   it('sends no environment of its own', async () => {
-    engine.respondWith((_call, callback) => callback(null, aResourceResponse()));
+    engine.on('getResource', (_call, callback) => callback(null, aResourceResponse()));
 
     await getResource();
 
@@ -58,7 +59,7 @@ describe('the transport, against a real gRPC server', () => {
   });
 
   it('turns a NOT_FOUND from the server into ResourceNotFoundError', async () => {
-    engine.respondWith((_call, callback) =>
+    engine.on('getResource', (_call, callback) =>
       callback({
         code: GrpcStatus.NOT_FOUND,
         details: 'Resource not found: seat_A12',
@@ -85,7 +86,7 @@ describe('the transport, against a real gRPC server', () => {
     [GrpcStatus.INVALID_ARGUMENT, ValidationError, 'VALIDATION'],
     [GrpcStatus.UNAUTHENTICATED, AuthenticationError, 'AUTHENTICATION'],
   ])('maps status %i to the matching error', async (code, expected, expectedCode) => {
-    engine.respondWith((_call, callback) =>
+    engine.on('getResource', (_call, callback) =>
       callback({ code, details: 'from the server', metadata: undefined } as never),
     );
 
@@ -98,7 +99,7 @@ describe('the transport, against a real gRPC server', () => {
 
   /** INTERNAL always arrives opaque: the server refuses to describe its own failures. */
   it('leaves anything else as the base error', async () => {
-    engine.respondWith((_call, callback) =>
+    engine.on('getResource', (_call, callback) =>
       callback({
         code: GrpcStatus.INTERNAL,
         details: 'Unexpected gRPC error',
@@ -115,7 +116,7 @@ describe('the transport, against a real gRPC server', () => {
 
   it('gives up on a call that runs past its deadline', async () => {
     // Never answers, so only the deadline can end this call.
-    engine.respondWith(() => {});
+    engine.on('getResource', () => {});
 
     const impatient = new Transport(
       resolveOptions({ endpoint: engine.endpoint, apiKey: API_KEY, tls: false, timeoutMs: 150 }),
