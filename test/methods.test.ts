@@ -2,7 +2,12 @@ import { status as GrpcStatus } from '@grpc/grpc-js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { CaerusClient } from '../src/client.js';
-import { CaerusError, ConflictError, ValidationError } from '../src/errors.js';
+import {
+  CaerusError,
+  ConflictError,
+  OutOfStockError,
+  ValidationError,
+} from '../src/errors.js';
 import {
   aHolderResponse,
   aResourceResponse,
@@ -342,7 +347,7 @@ describe('the business methods', () => {
     engine.on('getResource', (_call, callback) =>
       callback({
         code: GrpcStatus.FAILED_PRECONDITION,
-        details: 'Not enough stock',
+        details: 'Holder already confirmed',
         metadata: undefined,
       } as never),
     );
@@ -350,6 +355,60 @@ describe('the business methods', () => {
     const error = await caerus.getResource('seat_A12').catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(ConflictError);
-    expect((error as CaerusError).message).toBe('Not enough stock');
+    expect((error as CaerusError).message).toBe('Holder already confirmed');
+  });
+
+  /**
+   * Found by running the SDK against a real engine: OutOfStockException had no handler
+   * in GrpcGlobalExceptionHandler, so the most important answer this product gives —
+   * "there is none left" — reached the client as INTERNAL "Unexpected gRPC error".
+   *
+   * The engine now answers RESOURCE_EXHAUSTED, and this is the SDK side of that.
+   */
+  describe('running out of stock', () => {
+    function outOfStock(_call: unknown, callback: (error: unknown) => void): void {
+      callback({
+        code: GrpcStatus.RESOURCE_EXHAUSTED,
+        details: 'Out of stock for resource: seat_A12',
+        metadata: undefined,
+      });
+    }
+
+    it('arrives as OutOfStockError', async () => {
+      engine.on('take', outOfStock as never);
+
+      const error = await caerus.take('seat_A12').catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(OutOfStockError);
+      expect((error as CaerusError).code).toBe('OUT_OF_STOCK');
+      expect((error as CaerusError).message).toBe('Out of stock for resource: seat_A12');
+    });
+
+    /** Additive by design: code that only knew about ConflictError keeps working. */
+    it('is still a ConflictError', async () => {
+      engine.on('take', outOfStock as never);
+
+      const error = await caerus.take('seat_A12').catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ConflictError);
+      expect(error).toBeInstanceOf(CaerusError);
+    });
+
+    it('reaches takeMany the same way', async () => {
+      engine.on('take', outOfStock as never);
+
+      await expect(caerus.takeMany('general_admission', 4)).rejects.toBeInstanceOf(
+        OutOfStockError,
+      );
+    });
+
+    it('is no longer an opaque internal error', async () => {
+      engine.on('take', outOfStock as never);
+
+      const error = await caerus.take('seat_A12').catch((caught: unknown) => caught);
+
+      expect((error as CaerusError).code).not.toBe('UNKNOWN');
+      expect((error as CaerusError).message).not.toBe('Unexpected gRPC error');
+    });
   });
 });

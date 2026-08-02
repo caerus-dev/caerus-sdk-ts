@@ -217,21 +217,32 @@ message the engine sent.
 | Error | `code` | When |
 |---|---|---|
 | `ResourceNotFoundError` | `RESOURCE_NOT_FOUND` | No such resource, template or reservation |
-| `ConflictError` | `CONFLICT` | The operation does not fit the current state — **including no stock** |
+| `OutOfStockError` | `OUT_OF_STOCK` | There is not enough left to hold |
+| `ConflictError` | `CONFLICT` | Some other invalid state: already confirmed, already expired |
 | `ValidationError` | `VALIDATION` | The request was rejected |
 | `AuthenticationError` | `AUTHENTICATION` | API Key missing, unknown or revoked |
 | `TimeoutError` | `TIMEOUT` | The call ran past its deadline |
 | `CaerusError` | `UNKNOWN` | Anything else |
 
+**`OutOfStockError` extends `ConflictError`**, so code that only cares about "I could not
+get it" needs one branch, and code that wants to say *sold out* can have its own:
+
 ```typescript
 try {
   await caerus.take('seat_A12');
 } catch (error) {
+  // The specific one first — the other way round this never runs.
+  if (error instanceof OutOfStockError) {
+    return 'Sold out';
+  }
   if (error instanceof ConflictError) {
-    // sold out, or the reservation was in the wrong state — see Known limitations
+    return 'Not available right now';
   }
 }
 ```
+
+Switching on `code` instead of the class needs both cases spelled out: `OUT_OF_STOCK`
+does not also match `CONFLICT`.
 
 Full example: [`examples/04-errors.ts`](examples/04-errors.ts)
 
@@ -289,15 +300,6 @@ Full example: [`examples/05-testing.ts`](examples/05-testing.ts)
 Nothing here is a bug report — it is what this version does not do, so you can plan
 around it.
 
-### "Sold out" arrives as a generic conflict
-
-The engine reports no-stock and every other invalid state with the same code, so both
-become `ConflictError`. Telling them apart means reading the message text, which will
-break the first time the wording changes. Fixing it properly is a server change.
-
-**In the meantime:** check the stock with `getResource` before deciding what to tell your
-customer, rather than parsing the message.
-
 ### Nothing that changes state is ever retried
 
 If the network fails mid-call, the SDK cannot know whether the engine processed the
@@ -328,8 +330,8 @@ not what happens between them; interrupting your logic is not the SDK's business
 It is faithful to how we understand Caerus, which is not the same as being faithful to
 Caerus. Specifically:
 
-- **`QUEUED` is not simulated.** Out of stock always throws, like the `FAIL` strategy.
-  Templates that queue cannot be exercised against it
+- **`QUEUED` is not simulated.** Out of stock always throws `OutOfStockError`, like the
+  `FAIL` strategy. Templates that queue cannot be exercised against it
 - **Template rules are not enforced.** A single-unit template requiring exactly 1, or a
   template that rejects metadata, will be accepted here and refused by the engine
 - **`templateId` is made up** (`tpl-<name>`), so it will not match a real one

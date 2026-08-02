@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { SharedResourceApi } from '../src/api.js';
-import { ConflictError, ResourceNotFoundError, ValidationError } from '../src/errors.js';
+import {
+  ConflictError,
+  OutOfStockError,
+  ResourceNotFoundError,
+  ValidationError,
+} from '../src/errors.js';
 import { InMemoryCaerusClient } from '../src/mock.js';
 
 function aMock(availableAmount = 1) {
@@ -64,7 +69,30 @@ describe('the in-memory client', () => {
 
       await caerus.take('seat_A12');
 
-      await expect(caerus.take('seat_A12')).rejects.toBeInstanceOf(ConflictError);
+      await expect(caerus.take('seat_A12')).rejects.toBeInstanceOf(OutOfStockError);
+    });
+
+    /**
+     * The engine answers RESOURCE_EXHAUSTED for this, which the SDK turns into
+     * OutOfStockError. The mock has to produce the same thing, or a test suite that
+     * passes here would still break against Caerus.
+     */
+    it('reports it as the engine does, down to the error type', async () => {
+      const caerus = aMock(1);
+      await caerus.take('seat_A12');
+
+      const error = await caerus.take('seat_A12').catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(OutOfStockError);
+      expect(error).toBeInstanceOf(ConflictError);
+      expect((error as OutOfStockError).code).toBe('OUT_OF_STOCK');
+      expect((error as OutOfStockError).message).toBe('Out of stock for resource: seat_A12');
+    });
+
+    it('applies the same rule to takeMany', async () => {
+      const caerus = aMock(3);
+
+      await expect(caerus.takeMany('seat_A12', 4)).rejects.toBeInstanceOf(OutOfStockError);
     });
 
     it('does not know about resources nobody created', async () => {
@@ -180,9 +208,9 @@ describe('the in-memory client', () => {
   describe('forced failures', () => {
     it('fails the next call to the named method', async () => {
       const caerus = aMock();
-      caerus.failNext('take', new ConflictError('Not enough stock'));
+      caerus.failNext('take', new OutOfStockError('Out of stock for resource: seat_A12'));
 
-      await expect(caerus.take('seat_A12')).rejects.toThrow('Not enough stock');
+      await expect(caerus.take('seat_A12')).rejects.toThrow('Out of stock');
       // and only that one
       await expect(caerus.take('seat_A12')).resolves.toMatchObject({ status: 'PENDING' });
     });
