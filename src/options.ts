@@ -1,3 +1,16 @@
+/**
+ * Where the SDK reports things it handled but that you should still know about.
+ *
+ * Only one level, and only used when something went wrong in a place where throwing
+ * would do more harm than good — a release that failed while another error was already
+ * on its way out, for instance.
+ *
+ * Any structured logger fits: pass `(message, ...rest) => log.warn({ rest }, message)`.
+ */
+export interface CaerusLogger {
+  error: (message: string, ...details: unknown[]) => void;
+}
+
 /** How to reach Caerus. */
 export interface CaerusClientOptions {
   /**
@@ -36,9 +49,22 @@ export interface CaerusClientOptions {
    * never settles, which is far harder to diagnose than a timeout.
    */
   timeoutMs?: number;
+
+  /**
+   * Where to send the few messages the SDK emits. Defaults to `console.error`.
+   *
+   * A library that writes to the console with no way to redirect it is a nuisance in any
+   * service with structured logging, and silence would be worse than either.
+   */
+  logger?: CaerusLogger;
 }
 
 export const DEFAULT_TIMEOUT_MS = 10_000;
+
+/** Prefixed so a line from the SDK is recognisable in someone else's log. */
+export const DEFAULT_LOGGER: CaerusLogger = {
+  error: (message: string, ...details: unknown[]) => console.error(`[caerus] ${message}`, ...details),
+};
 
 /** Options with the defaults filled in. */
 export interface ResolvedClientOptions {
@@ -46,6 +72,7 @@ export interface ResolvedClientOptions {
   apiKey: string;
   tls: boolean;
   timeoutMs: number;
+  logger: CaerusLogger;
 }
 
 /**
@@ -72,10 +99,16 @@ export function resolveOptions(options: CaerusClientOptions): ResolvedClientOpti
     throw new TypeError('timeoutMs must be a positive number of milliseconds');
   }
 
+  const logger = options.logger ?? DEFAULT_LOGGER;
+  if (typeof logger.error !== 'function') {
+    throw new TypeError('logger must have an error(message, ...details) function');
+  }
+
   return {
     endpoint,
     apiKey,
     tls: options.tls ?? true,
     timeoutMs,
+    logger,
   };
 }
