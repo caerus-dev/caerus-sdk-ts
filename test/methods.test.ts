@@ -125,7 +125,11 @@ describe('the business methods', () => {
     });
 
     it('refuses to guess at a status it does not know', async () => {
-      engine.on('take', (_call, callback) => callback(null, aHolderResponse({ status: 99 })));
+      // 99 is deliberately outside the enum: a newer server sending a status this
+      // version has no name for.
+      engine.on('take', (_call, callback) =>
+        callback(null, aHolderResponse({ status: 99 as never })),
+      );
 
       await expect(caerus.take('seat_A12')).rejects.toThrow(/unknown status/i);
     });

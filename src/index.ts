@@ -16,6 +16,7 @@ export type {
   Metadata,
   Reservation,
   ReservationStatus,
+  ReservationWork,
   Resource,
   ResourcePage,
   TakeOptions,
