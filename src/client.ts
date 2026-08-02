@@ -1,4 +1,4 @@
-import { ValidationError } from './errors.js';
+import { ConflictError, ValidationError } from './errors.js';
 import {
   assertUsable,
   encodeMetadata,
@@ -13,6 +13,7 @@ import type {
   CreateResourceOptions,
   GetResourcesByGroupOptions,
   Reservation,
+  ReservationWork,
   Resource,
   ResourcePage,
   TakeOptions,
@@ -214,6 +215,103 @@ export class CaerusClient {
     );
 
     return assertUsable(toReservation(response));
+  }
+
+  // --- The whole cycle in one call -------------------------------------------------
+
+  /**
+   * Holds one unit, runs your work, and settles the reservation either way.
+   *
+   * ```typescript
+   * await caerus.reserve('seat_A12', async () => {
+   *   await chargeCard();
+   * });
+   * ```
+   *
+   * If your block returns, the reservation is confirmed. If it throws, the reservation
+   * is released and **your** error is what comes out — the release is bookkeeping, and
+   * replacing your error with one about bookkeeping would hide what actually happened.
+   *
+   * This exists because forgetting the release on the error path is the integration
+   * mistake everyone makes, and the stock stays held until the TTL runs out.
+   *
+   * Whatever your block returns is what this returns.
+   */
+  async reserve<T>(
+    resourceKey: string,
+    work: ReservationWork<T>,
+    options: TakeOptions = {},
+  ): Promise<T> {
+    return this.#reserve(await this.take(resourceKey, options), work);
+  }
+
+  /**
+   * The same, for several units at once.
+   *
+   * A second method rather than an optional amount, for the same reason `takeMany` is
+   * one: the SDKs coming for other languages have to look the same, and Go has no
+   * overloading. Someone who learned `take` and `takeMany` already knows this pair.
+   */
+  async reserveMany<T>(
+    resourceKey: string,
+    amount: number,
+    work: ReservationWork<T>,
+    options: TakeOptions = {},
+  ): Promise<T> {
+    return this.#reserve(await this.takeMany(resourceKey, amount, options), work);
+  }
+
+  async #reserve<T>(reservation: Reservation, work: ReservationWork<T>): Promise<T> {
+    if (typeof work !== 'function') {
+      throw new ValidationError('reserve needs a function to run while the units are held');
+    }
+
+    // A queued reservation holds nothing yet. Running the block here would charge a card
+    // for a seat the caller does not have. Anyone who wants to handle queueing can use
+    // take directly and act on the status.
+    if (reservation.status === 'QUEUED') {
+      throw new ConflictError(
+        `Reservation ${reservation.id} is queued and holds nothing yet, so the work was not run. ` +
+          `Use take() if you want to handle queueing yourself.`,
+      );
+    }
+
+    let result: T;
+    try {
+      result = await work(reservation);
+    } catch (workError) {
+      await this.#releaseQuietly(reservation.id, workError);
+      throw workError;
+    }
+
+    // Deliberately outside the try: a failure to confirm is not the caller's error to
+    // handle by releasing, and the units are better left to lapse than released on a
+    // state we could not read.
+    await this.confirm(reservation.id);
+    return result;
+  }
+
+  /**
+   * Releases without ever throwing.
+   *
+   * If this fails while an error is already on its way out, the caller's error is the
+   * one worth having: it says why the checkout failed. The release failing is an
+   * operational detail, and the units lapse on their own when the TTL runs out.
+   *
+   * It still has to be visible somewhere, hence the log.
+   */
+  async #releaseQuietly(reservationId: string, causeOfRelease: unknown): Promise<void> {
+    try {
+      await this.release(reservationId);
+    } catch (releaseError) {
+      console.error(
+        `[caerus] Could not release reservation ${reservationId} after the reserved work failed. ` +
+          `It will lapse when its TTL runs out. Release error:`,
+        releaseError,
+        `Original error:`,
+        causeOfRelease,
+      );
+    }
   }
 
   // --- Queries -------------------------------------------------------------------
