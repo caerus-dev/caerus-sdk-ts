@@ -165,13 +165,21 @@ describe('reserve', () => {
         metadata: undefined,
       } as never),
     );
-    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // A logger of our own, which is also the point: the SDK must not be stuck on console.
+    const logged = vi.fn();
+    const client = new CaerusClient({
+      endpoint: engine.endpoint,
+      apiKey: 'no-es-una-clave',
+      tls: false,
+      logger: { error: logged },
+    });
 
-    const thrown = await caerus
+    const thrown = await client
       .reserve('seat_A12', async () => {
         throw original;
       })
       .catch((error: unknown) => error);
+    client.close();
 
     expect(thrown).toBe(original);
     // and the release failure is not silent

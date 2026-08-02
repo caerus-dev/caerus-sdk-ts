@@ -1,4 +1,5 @@
-import { ConflictError, ValidationError } from './errors.js';
+import type { SharedResourceApi } from './api.js';
+import { ValidationError } from './errors.js';
 import {
   assertUsable,
   encodeMetadata,
@@ -6,8 +7,14 @@ import {
   toResource,
   toResourcePage,
 } from './internal/mapping.js';
+import { runReserve } from './internal/reserve-flow.js';
 import { Transport } from './internal/transport.js';
-import { resolveOptions, type CaerusClientOptions, type ResolvedClientOptions } from './options.js';
+import {
+  resolveOptions,
+  type CaerusClientOptions,
+  type CaerusLogger,
+  type ResolvedClientOptions,
+} from './options.js';
 import type {
   ConfirmOptions,
   CreateResourceOptions,
@@ -33,7 +40,7 @@ import type {
  *
  * No method takes an environment. The API Key identifies it.
  */
-export class CaerusClient {
+export class CaerusClient implements SharedResourceApi {
   // `#` and not `protected`: a protected field is still part of the published type, so
   // the declaration bundle would inline Transport and, through it, every type generated
   // from the .proto. Private this way, none of it reaches the .d.ts.
@@ -43,12 +50,14 @@ export class CaerusClient {
   readonly #transport: Transport;
   readonly #endpoint: string;
   readonly #timeoutMs: number;
+  readonly #logger: CaerusLogger;
 
   constructor(options: CaerusClientOptions) {
     const resolved: ResolvedClientOptions = resolveOptions(options);
 
     this.#endpoint = resolved.endpoint;
     this.#timeoutMs = resolved.timeoutMs;
+    this.#logger = resolved.logger;
     this.#transport = new Transport(resolved);
   }
 
@@ -262,56 +271,11 @@ export class CaerusClient {
   }
 
   async #reserve<T>(reservation: Reservation, work: ReservationWork<T>): Promise<T> {
-    if (typeof work !== 'function') {
-      throw new ValidationError('reserve needs a function to run while the units are held');
-    }
-
-    // A queued reservation holds nothing yet. Running the block here would charge a card
-    // for a seat the caller does not have. Anyone who wants to handle queueing can use
-    // take directly and act on the status.
-    if (reservation.status === 'QUEUED') {
-      throw new ConflictError(
-        `Reservation ${reservation.id} is queued and holds nothing yet, so the work was not run. ` +
-          `Use take() if you want to handle queueing yourself.`,
-      );
-    }
-
-    let result: T;
-    try {
-      result = await work(reservation);
-    } catch (workError) {
-      await this.#releaseQuietly(reservation.id, workError);
-      throw workError;
-    }
-
-    // Deliberately outside the try: a failure to confirm is not the caller's error to
-    // handle by releasing, and the units are better left to lapse than released on a
-    // state we could not read.
-    await this.confirm(reservation.id);
-    return result;
-  }
-
-  /**
-   * Releases without ever throwing.
-   *
-   * If this fails while an error is already on its way out, the caller's error is the
-   * one worth having: it says why the checkout failed. The release failing is an
-   * operational detail, and the units lapse on their own when the TTL runs out.
-   *
-   * It still has to be visible somewhere, hence the log.
-   */
-  async #releaseQuietly(reservationId: string, causeOfRelease: unknown): Promise<void> {
-    try {
-      await this.release(reservationId);
-    } catch (releaseError) {
-      console.error(
-        `[caerus] Could not release reservation ${reservationId} after the reserved work failed. ` +
-          `It will lapse when its TTL runs out. Release error:`,
-        releaseError,
-        `Original error:`,
-        causeOfRelease,
-      );
-    }
+    return runReserve(reservation, work, {
+      confirm: (id) => this.confirm(id),
+      release: (id) => this.release(id),
+      logger: this.#logger,
+    });
   }
 
   // --- Queries -------------------------------------------------------------------
