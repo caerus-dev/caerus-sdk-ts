@@ -20,12 +20,15 @@
     "dist"
   ],
   "scripts": {
+    "generate": "npm run proto:generate && npm run version:generate",
     "proto:generate": "node scripts/generate-proto.mjs",
+    "version:generate": "node scripts/generate-version.mjs",
     "clean": "node scripts/clean.mjs",
-    "prebuild": "npm run proto:generate",
+    "prebuild": "npm run generate",
     "build": "tsup",
-    "pretypecheck": "npm run proto:generate",
+    "pretypecheck": "npm run generate",
     "typecheck": "tsc --noEmit",
+    "pretest": "npm run generate",
     "test": "vitest run",
     "prepublishOnly": "npm run build"
   },
@@ -33,7 +36,7 @@
     "@grpc/grpc-js": "^1.12.6"
   },
   "devDependencies": {
-    "grpc-tools": "^1.13.0",
+    "@bufbuild/buf": "^1.72.0",
     "ts-proto": "^2.6.1",
     "tsup": "^8.4.0",
     "typescript": "^5.7.3",
