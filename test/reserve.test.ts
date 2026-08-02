@@ -24,7 +24,7 @@ describe('reserve', () => {
     engine.reset();
     seen = [];
     for (const method of ['take', 'confirm', 'release'] as const) {
-      engine.on(method, (call, callback) => {
+      engine.on(method, (_call, callback) => {
         seen.push(method);
         callback(null, method === 'release' ? {} : aHolderResponse());
       });

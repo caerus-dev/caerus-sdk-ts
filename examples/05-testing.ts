@@ -5,7 +5,7 @@
  * cannot tell them apart. It keeps real stock: a test that reserves more than exists
  * fails here the way it would in production.
  */
-import { ConflictError, InMemoryCaerusClient, type SharedResourceApi } from '@caerus-dev/sdk';
+import { InMemoryCaerusClient, OutOfStockError, type SharedResourceApi } from '@caerus-dev/sdk';
 
 declare function chargeCard(amount: number): Promise<{ paymentId: string }>;
 
@@ -49,7 +49,7 @@ export async function testSoldOut(): Promise<void> {
 
   await buySeat(caerus, 'seat_A12').then(
     () => console.assert(false, 'should have failed'),
-    (error: unknown) => console.assert(error instanceof ConflictError),
+    (error: unknown) => console.assert(error instanceof OutOfStockError),
   );
 }
 
@@ -95,10 +95,10 @@ export async function testExpiry(): Promise<void> {
 export async function testEngineMisbehaving(): Promise<void> {
   const caerus = aTestEngine();
 
-  caerus.failNext('take', new ConflictError('Not enough stock'));
+  caerus.failNext('take', new OutOfStockError('Out of stock for resource: seat_A12'));
 
   await buySeat(caerus, 'seat_A12').then(
     () => console.assert(false, 'should have failed'),
-    (error: unknown) => console.assert(error instanceof ConflictError),
+    (error: unknown) => console.assert(error instanceof OutOfStockError),
   );
 }

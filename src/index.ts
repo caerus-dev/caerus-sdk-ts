@@ -31,12 +31,13 @@ export type {
 } from './types.js';
 
 export {
-  CaerusError,
-  ResourceNotFoundError,
-  ConflictError,
-  ValidationError,
   AuthenticationError,
+  CaerusError,
+  ConflictError,
+  OutOfStockError,
+  ResourceNotFoundError,
   TimeoutError,
+  ValidationError,
   type CaerusErrorCode,
 } from './errors.js';
 

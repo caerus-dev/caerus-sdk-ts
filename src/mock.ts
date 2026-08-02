@@ -1,5 +1,11 @@
 import type { SharedResourceApi } from './api.js';
-import { CaerusError, ConflictError, ResourceNotFoundError, ValidationError } from './errors.js';
+import {
+  CaerusError,
+  ConflictError,
+  OutOfStockError,
+  ResourceNotFoundError,
+  ValidationError,
+} from './errors.js';
 import { runReserve } from './internal/reserve-flow.js';
 import { DEFAULT_LOGGER, type CaerusLogger } from './options.js';
 import type {
@@ -364,9 +370,9 @@ export class InMemoryCaerusClient implements SharedResourceApi {
 
     const resource = this.#requireResource(resourceKey);
     if (resource.availableAmount < amount) {
-      throw new ConflictError(
-        `Not enough stock for ${resourceKey}: asked for ${amount}, ${resource.availableAmount} available.`,
-      );
+      // The same type and wording the engine produces. A mock that reported this
+      // differently would teach a lesson that only breaks in production.
+      throw new OutOfStockError(`Out of stock for resource: ${resourceKey}`);
     }
 
     resource.availableAmount -= amount;

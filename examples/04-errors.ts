@@ -9,6 +9,7 @@ import {
   CaerusClient,
   CaerusError,
   ConflictError,
+  OutOfStockError,
   ResourceNotFoundError,
   TimeoutError,
   ValidationError,
@@ -33,10 +34,14 @@ export async function buyWithGoodErrors(): Promise<string> {
       throw new Error('That seat does not exist');
     }
 
+    // Before ConflictError, which it extends. The other way round this branch would
+    // never run.
+    if (error instanceof OutOfStockError) {
+      throw new Error('That seat is sold out');
+    }
+
     if (error instanceof ConflictError) {
-      // Careful: this is also what a sold-out seat looks like. The engine reports "no
-      // stock" and "this reservation is in the wrong state" with the same code, so the
-      // two cannot be told apart without reading the message. See the README.
+      // Some other invalid state: a reservation already confirmed, one that expired.
       throw new Error('That seat is no longer available');
     }
 
@@ -78,6 +83,10 @@ export async function describeFailure(): Promise<string> {
     switch (error.code) {
       case 'RESOURCE_NOT_FOUND':
         return 'no such seat';
+      // OUT_OF_STOCK is its own code, so switching on `code` needs both branches even
+      // though OutOfStockError extends ConflictError.
+      case 'OUT_OF_STOCK':
+        return 'sold out';
       case 'CONFLICT':
         return 'unavailable';
       case 'TIMEOUT':
