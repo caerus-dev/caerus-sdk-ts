@@ -1,7 +1,7 @@
 node_modules/
 dist/
 
-# Produced from data-plane-service/src/main/proto before every build.
+# Produced from proto/sre_service.proto before every build.
 # Committing it would let it drift away from the contract it comes from.
 src/generated/
 
