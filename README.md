@@ -364,6 +364,11 @@ Two rules the build enforces:
 - **Nothing generated from the `.proto` may appear in the published types.** `npm run
   build` checks `dist/*.d.ts` and fails if it finds any
 
+Deeper documentation lives in [`docs/`](docs/) — the Caerus model, how the SDK is put
+together, the error mapping, and how to run it against a real engine. It is written in
+Spanish, for the teams building on Caerus. If you are going to change this package,
+[`AGENTS.md`](AGENTS.md) is the place to start.
+
 ## Licence
 
 MIT
