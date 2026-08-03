@@ -14,7 +14,7 @@ declare function chargeCard(amount: number): Promise<{ paymentId: string }>;
  * client, tests pass the in-memory one, and this function never knows.
  */
 export async function buySeat(caerus: SharedResourceApi, seat: string): Promise<string> {
-  const holder = await caerus.take(seat);
+  const holder = await caerus.unitary(seat).take();
 
   try {
     const { paymentId } = await chargeCard(4500);
@@ -83,11 +83,11 @@ export async function testPaymentFails(): Promise<void> {
 export async function testExpiry(): Promise<void> {
   const caerus = aTestEngine();
 
-  const reservation = await caerus.take('seat_A12', { ttlSeconds: 300 });
+  const reservation = await caerus.unitary('seat_A12').take({ ttlSeconds: 300 });
 
   caerus.advanceTime(301);
 
-  const after = await caerus.getReservation(reservation.id);
+  const after = await caerus.getResourceHolder(reservation.id);
   console.assert(after.status === 'FAILED', 'it should have expired');
 
   const seat = await caerus.getResource('seat_A12');

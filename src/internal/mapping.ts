@@ -1,8 +1,8 @@
 import { CaerusError, ConflictError } from '../errors.js';
 import type {
   Metadata,
-  Reservation,
-  ReservationStatus,
+  ResourceHolder,
+  ResourceHolderStatus,
   Resource,
   ResourcePage,
 } from '../types.js';
@@ -65,7 +65,7 @@ export function decodeExpiresAt(epochSeconds: number): Date {
   return new Date(epochSeconds * 1000);
 }
 
-const STATUS_BY_WIRE: Record<number, ReservationStatus> = {
+const STATUS_BY_WIRE: Record<number, ResourceHolderStatus> = {
   [WireStatus.PENDING]: 'PENDING',
   [WireStatus.CONFIRMED]: 'CONFIRMED',
   [WireStatus.RELEASED]: 'RELEASED',
@@ -73,7 +73,7 @@ const STATUS_BY_WIRE: Record<number, ReservationStatus> = {
   [WireStatus.QUEUED]: 'QUEUED',
 };
 
-export function decodeStatus(wire: number, context: string): ReservationStatus {
+export function decodeStatus(wire: number, context: string): ResourceHolderStatus {
   const status = STATUS_BY_WIRE[wire];
   if (status === undefined) {
     // A status this version does not know about. Guessing would be worse.
@@ -84,8 +84,8 @@ export function decodeStatus(wire: number, context: string): ReservationStatus {
   return status;
 }
 
-export function toReservation(response: ResourceHolderResponse): Reservation {
-  const context = `reservation ${response.holderId}`;
+export function toResourceHolder(response: ResourceHolderResponse): ResourceHolder {
+  const context = `holder ${response.holderId}`;
 
   return {
     id: response.holderId,
@@ -117,18 +117,16 @@ export function toResourcePage(response: GetResourcesByGroupKeyResponse): Resour
 }
 
 /**
- * A reservation that came back FAILED is not one you can use. Handing it over as if the
+ * A holder that came back FAILED is not one you can use. Handing it over as if the
  * call had worked is the trap this guards: a caller who checks only for a thrown error
  * would carry on believing they hold the seat.
  *
- * Queries are exempt — asking what state a reservation is in and being told FAILED is
+ * Queries are exempt — asking what state a holder is in and being told FAILED is
  * an answer, not a failure.
  */
-export function assertUsable(reservation: Reservation): Reservation {
-  if (reservation.status === 'FAILED') {
-    throw new ConflictError(
-      `Caerus could not hold reservation ${reservation.id}: its status is FAILED.`,
-    );
+export function assertUsable(holder: ResourceHolder): ResourceHolder {
+  if (holder.status === 'FAILED') {
+    throw new ConflictError(`Caerus could not hold ${holder.id}: its status is FAILED.`);
   }
-  return reservation;
+  return holder;
 }

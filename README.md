@@ -4,7 +4,7 @@ The Caerus client for Node.js. Reserve limited stock — seats, slots, inventory
 writing the concurrency logic that keeps two customers from buying the same thing.
 
 ```typescript
-const holder = await caerus.take('seat_A12');
+const holder = await caerus.unitary('seat_A12').take();
 await chargeCard(4500);
 await caerus.confirm(holder.id);
 ```
@@ -84,11 +84,11 @@ const caerus = new CaerusClient({
 
 // Once, when the show goes on sale. "seat" is a template you made in the dashboard.
 for (const number of [1, 2, 3, 4]) {
-  await caerus.createResource('seat', `seat_A${number}`, 1, { groupKey: 'row_A' });
+  await caerus.createUnitary('seat', `seat_A${number}`, { groupKey: 'row_A' });
 }
 
 // Every time somebody buys.
-const holder = await caerus.take('seat_A1', { ttlSeconds: 120 });
+const holder = await caerus.unitary('seat_A1').take({ ttlSeconds: 120 });
 
 try {
   const { paymentId } = await chargeCard(4500);
@@ -106,37 +106,64 @@ console.log(row.resources.filter((seat) => seat.availableAmount > 0).length);  /
 **Release on every path that abandons a checkout.** Without it the seat stays held until
 its TTL runs out — correct, but minutes of stock nobody can buy.
 
+More in `examples/01-holding-a-resource.ts`, in the repository.
+
 ---
 
 ## The methods
 
-### Reservations
+### Taking: `unitary` and `pooled`
+
+You take through a handle, and the handle says what kind of resource it is.
 
 ```typescript
-take(resourceKey, options?)             // hold one unit
-takeMany(resourceKey, amount, options?) // hold several
-confirm(reservationId, options?)        // settle it: the units stay taken
-release(reservationId)                  // give them back early
-extend(reservationId, extraMs)          // push the expiry out
-getReservation(reservationId)           // read it as it stands
+const seat = caerus.unitary('seat_A12');       // one of it
+await seat.take(options?);
+
+const pool = caerus.pooled('general_admission'); // many of it
+await pool.take(options?);
+await pool.takeMany(4, options?);
 ```
+
+**`unitary` has no `takeMany`.** Asking for three of a numbered seat does not compile —
+which is the point of splitting them.
+
+Making a handle fetches nothing. It records what *you* know the resource to be, so the
+type holds wherever the taking happens, which is rarely the service that declared the
+inventory in the first place.
+
+> That also means the SDK believes you. `pooled('seat_A12').takeMany(3)` compiles, and
+> the engine refuses it at runtime just as it would have before. This is a safety net,
+> not a guarantee.
+
+### Holders
+
+```typescript
+confirm(resourceHolderId, options?)   // settle it: the units stay taken
+release(resourceHolderId)             // give them back early
+extend(resourceHolderId, extraMs)     // push the expiry out
+getResourceHolder(resourceHolderId)   // read it as it stands
+```
+
+These take a holder id rather than a resource, which is why they live on the client and
+not on the handles.
 
 `options` for `take` and `takeMany`:
 
 | Field | What it does |
 |---|---|
-| `idempotencyKey` | Sending the same key twice returns the first reservation instead of taking more. Some templates require it |
+| `idempotencyKey` | Sending the same key twice returns the first holder instead of taking more. Some templates require it |
 | `ttlSeconds` | Overrides the template's hold time |
-| `metadata` | An object of your own that travels with the reservation |
+| `metadata` | An object of your own that travels with the holder |
 
 > ⚠️ **`extend` takes milliseconds, `ttlSeconds` takes seconds.** That mismatch is in the
 > contract, not something this SDK invented, so it is passed through rather than papered
 > over. The engine works in whole seconds and rounds up: anything under 1000 buys exactly
 > one second.
 
-More in `examples/02-manual-lifecycle.ts`, in the repository.
+More in `examples/02-holders.ts`, in the repository.
 
-#### What a reservation looks like
+#### What a holder looks like
 
 ```typescript
 {
@@ -160,13 +187,14 @@ More in `examples/02-manual-lifecycle.ts`, in the repository.
 | `FAILED` | The hold did not survive — it expired, most likely |
 
 `take` throws on `FAILED` rather than handing back something that looks successful.
-`getReservation` returns it: asking what state something is in and being told `FAILED` is
+`getResourceHolder` returns it: asking what state something is in and being told `FAILED` is
 an answer, not a failure.
 
 ### Inventory
 
 ```typescript
-createResource(templateName, key, availableAmount, options?)
+createUnitary(templateName, key, options?)                    // one unit, no amount
+createMultiple(templateName, key, availableAmount, options?)  // several
 getResource(key)
 getResourcesByGroup(groupKey, options?)   // { page?, pageSize? }
 ```
@@ -186,7 +214,7 @@ message the engine sent.
 
 | Error | `code` | When |
 |---|---|---|
-| `ResourceNotFoundError` | `RESOURCE_NOT_FOUND` | No such resource, template or reservation |
+| `ResourceNotFoundError` | `RESOURCE_NOT_FOUND` | No such resource, template or holder |
 | `ConflictError` | `CONFLICT` | The state does not allow it — **including no stock** |
 | `ValidationError` | `VALIDATION` | The request was rejected |
 | `AuthenticationError` | `AUTHENTICATION` | API Key missing, unknown or revoked |
@@ -195,7 +223,7 @@ message the engine sent.
 
 ```typescript
 try {
-  await caerus.take('seat_A12');
+  await caerus.unitary('seat_A12').take();
 } catch (error) {
   if (error instanceof ConflictError) {
     // Sold out, or the holder was in the wrong state — see Known limitations
@@ -210,7 +238,7 @@ More in `examples/04-errors.ts`, in the repository.
 ## Testing without Caerus
 
 `InMemoryCaerusClient` implements the same interface as the real client, so the code
-under test cannot tell them apart. It keeps real stock: a test that reserves more than
+under test cannot tell them apart. It keeps real stock: a test that takes more than
 exists fails the way production would.
 
 ```typescript
@@ -218,7 +246,7 @@ import { InMemoryCaerusClient, type SharedResourceApi } from '@caerus-dev/sdk';
 
 // Take the interface, not the class.
 async function buySeat(caerus: SharedResourceApi, seat: string) {
-  const holder = await caerus.take(seat);
+  const holder = await caerus.unitary(seat).take();
   await chargeCard(4500);
   await caerus.confirm(holder.id);
 }
@@ -233,13 +261,13 @@ await buySeat(caerus, 'seat_A12');
 **Time does not pass on its own**, which is the point:
 
 ```typescript
-const reservation = await caerus.take('seat_A12', { ttlSeconds: 300 });
+const holder = await caerus.unitary('seat_A12').take({ ttlSeconds: 300 });
 
 caerus.advanceTime(301);                 // 301 seconds later
-await caerus.getReservation(reservation.id);   // status: 'FAILED'
+await caerus.getResourceHolder(holder.id);   // status: 'FAILED'
 ```
 
-A mock that expired reservations on a real clock would make your tests wait, and fail now
+A mock that expired holders on a real clock would make your tests wait, and fail now
 and then depending on how busy the machine was. Here time is an input, like the stock.
 
 **Forcing failures**, for the paths you cannot otherwise reach:
@@ -249,7 +277,7 @@ caerus.failNext('release', new ConflictError('release exploded'));
 caerus.clearFailures();
 ```
 
-Also available: `expire(reservationId)` for one reservation, and `snapshot()` for
+Also available: `expire(resourceHolderId)` for one holder, and `snapshot()` for
 assertions the API cannot make.
 
 More in `examples/05-testing.ts`, in the repository.
@@ -283,7 +311,7 @@ customer, rather than parsing the message.
 ### Slow work can outlive its own hold
 
 If whatever you do between `take` and `confirm` takes longer than the hold, the
-reservation expires while you are still working and the `confirm` afterwards fails. Your
+holder expires while you are still working and the `confirm` afterwards fails. Your
 work already happened — the payment went through — but the seat went back on sale in the
 middle.
 

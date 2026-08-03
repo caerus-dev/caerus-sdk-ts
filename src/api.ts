@@ -2,10 +2,11 @@ import type {
   ConfirmOptions,
   CreateResourceOptions,
   GetResourcesByGroupOptions,
-  Reservation,
+  PooledResource,
   Resource,
+  ResourceHolder,
   ResourcePage,
-  TakeOptions,
+  UnitaryResource,
 } from './types.js';
 
 /**
@@ -23,28 +24,54 @@ import type {
  * ```
  */
 export interface SharedResourceApi {
-  /** Declares something that can be reserved. */
-  createResource(
+  // --- Inventory ------------------------------------------------------------------
+
+  /**
+   * Declares a resource that holds exactly one unit. Takes no amount, because there is
+   * only ever one.
+   */
+  createUnitary(
+    templateName: string,
+    key: string,
+    options?: CreateResourceOptions,
+  ): Promise<Resource>;
+
+  /** Declares a resource with several interchangeable units. */
+  createMultiple(
     templateName: string,
     key: string,
     availableAmount: number,
     options?: CreateResourceOptions,
   ): Promise<Resource>;
 
-  /** Holds one unit. */
-  take(resourceKey: string, options?: TakeOptions): Promise<Reservation>;
+  // --- Handles --------------------------------------------------------------------
 
-  /** Holds several units at once. */
-  takeMany(resourceKey: string, amount: number, options?: TakeOptions): Promise<Reservation>;
+  /**
+   * A handle on a single-unit resource. Only offers `take`.
+   *
+   * Nothing is fetched: this declares what you know the resource to be, so the type
+   * system can hold you to it wherever the reserving actually happens.
+   */
+  unitary(key: string): UnitaryResource;
 
-  /** Settles a reservation for good. */
-  confirm(reservationId: string, options?: ConfirmOptions): Promise<Reservation>;
+  /** A handle on a multi-unit resource. Offers `take` and `takeMany`. */
+  pooled(key: string): PooledResource;
 
-  /** Gives the units back before the reservation lapses. */
-  release(reservationId: string): Promise<void>;
+  // --- Holders --------------------------------------------------------------------
+
+  /** Settles a holder for good. The units stay taken. */
+  confirm(resourceHolderId: string, options?: ConfirmOptions): Promise<ResourceHolder>;
+
+  /** Gives the units back before the holder lapses. */
+  release(resourceHolderId: string): Promise<void>;
 
   /** Pushes the expiry further out, in milliseconds. */
-  extend(reservationId: string, extraMs: number): Promise<Reservation>;
+  extend(resourceHolderId: string, extraMs: number): Promise<ResourceHolder>;
+
+  /** Reads a holder as it stands. */
+  getResourceHolder(resourceHolderId: string): Promise<ResourceHolder>;
+
+  // --- Queries --------------------------------------------------------------------
 
   /** Reads a resource and its current stock. */
   getResource(key: string): Promise<Resource>;
@@ -54,9 +81,6 @@ export interface SharedResourceApi {
     groupKey: string,
     options?: GetResourcesByGroupOptions,
   ): Promise<ResourcePage>;
-
-  /** Reads a reservation as it stands. */
-  getReservation(reservationId: string): Promise<Reservation>;
 
   /** Releases whatever the implementation is holding on to. */
   close(): void;
