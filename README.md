@@ -345,8 +345,9 @@ to do about it here; it is noted so it is not mistaken for a guarantee.
 
 ## Contributing
 
-The gRPC client is generated from `data-plane-service/src/main/proto/sre_service.proto`
-before every build and is not committed, so it cannot drift from the contract.
+The gRPC client is generated from `proto/sre_service.proto` before every build and is
+not committed, so it cannot drift from the contract. That `.proto` is a copy of the one
+in `caerus-back`; see [`proto/README.md`](proto/README.md).
 
 ```bash
 npm install

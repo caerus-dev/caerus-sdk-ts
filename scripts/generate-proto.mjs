@@ -1,10 +1,12 @@
-// Generates the gRPC client from the .proto that lives in data-plane-service.
+// Generates the gRPC client from the .proto in proto/.
 //
-// The contract is NOT copied into this package: it is read from its one home, so a
-// change to the service and the SDK that wraps it always land in the same commit.
+// That file is a copy. The contract itself lives in the caerus-back repository, in
+// data-plane-service. It is copied rather than read from there because that repository
+// is private and this one is public: anyone who clones this has to be able to build it.
+// proto/README.md records which revision the copy came from and how to refresh it.
 //
-// The output is not committed either. It is regenerated before every build, which is
-// what keeps it from drifting away from the contract.
+// The generated client is not committed. It is rebuilt before every build and every
+// test run, so it cannot drift from the contract as vendored here.
 //
 // ts-proto does the generating; buf only supplies the compiler. See buf.gen.yaml.
 
@@ -14,7 +16,7 @@ import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const protoDir = resolve(packageRoot, '..', 'data-plane-service', 'src', 'main', 'proto');
+const protoDir = resolve(packageRoot, 'proto');
 const protoFile = join(protoDir, 'sre_service.proto');
 const outDir = join(packageRoot, 'src', 'generated');
 
