@@ -15,7 +15,8 @@ const caerus = new CaerusClient({
 /** One row of a theatre, from a template called "seat". */
 export async function openRowA(): Promise<void> {
   for (const number of [1, 2, 3, 4]) {
-    await caerus.createResource('seat', `seat_A${number}`, 1, {
+    // createUnitary takes no amount: a unitary resource always has exactly one.
+    await caerus.createUnitary('seat', `seat_A${number}`, {
       // Lets you read the whole row back in one call.
       groupKey: 'row_A',
       metadata: { zone: 'stalls', row: 'A' },
@@ -25,7 +26,7 @@ export async function openRowA(): Promise<void> {
 
 /** A pool of interchangeable units rather than named seats. */
 export async function openGeneralAdmission(): Promise<void> {
-  await caerus.createResource('ga_pool', 'general_admission', 500);
+  await caerus.createMultiple('ga_pool', 'general_admission', 500);
 }
 
 export async function howManyLeft(): Promise<number> {

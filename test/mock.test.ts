@@ -14,7 +14,7 @@ describe('the in-memory client', () => {
   /** The point of the whole thing: code written against the API takes either one. */
   it('is usable wherever the real client is', async () => {
     async function checkout(caerus: SharedResourceApi): Promise<string> {
-      const holder = await caerus.take('seat_A12');
+      const holder = await caerus.unitary('seat_A12').take();
       await caerus.confirm(holder.id);
       return holder.id;
     }
@@ -28,7 +28,7 @@ describe('the in-memory client', () => {
     it('moves units from available to pending when taken', async () => {
       const caerus = aMock(5);
 
-      await caerus.takeMany('seat_A12', 2);
+      await caerus.pooled('seat_A12').takeMany(2);
       const resource = await caerus.getResource('seat_A12');
 
       expect(resource.availableAmount).toBe(3);
@@ -38,8 +38,8 @@ describe('the in-memory client', () => {
     it('gives them back on release', async () => {
       const caerus = aMock(5);
 
-      const reservation = await caerus.takeMany('seat_A12', 2);
-      await caerus.release(reservation.id);
+      const holder = await caerus.pooled('seat_A12').takeMany(2);
+      await caerus.release(holder.id);
 
       expect(await caerus.getResource('seat_A12')).toMatchObject({
         availableAmount: 5,
@@ -51,8 +51,8 @@ describe('the in-memory client', () => {
     it('keeps them taken on confirm', async () => {
       const caerus = aMock(5);
 
-      const reservation = await caerus.takeMany('seat_A12', 2);
-      await caerus.confirm(reservation.id);
+      const holder = await caerus.pooled('seat_A12').takeMany(2);
+      await caerus.confirm(holder.id);
 
       expect(await caerus.getResource('seat_A12')).toMatchObject({
         availableAmount: 3,
@@ -64,9 +64,9 @@ describe('the in-memory client', () => {
     it('refuses to take more than exists', async () => {
       const caerus = aMock(1);
 
-      await caerus.take('seat_A12');
+      await caerus.unitary('seat_A12').take();
 
-      await expect(caerus.take('seat_A12')).rejects.toBeInstanceOf(ConflictError);
+      await expect(caerus.unitary('seat_A12').take()).rejects.toBeInstanceOf(ConflictError);
     });
 
     /**
@@ -76,9 +76,9 @@ describe('the in-memory client', () => {
      */
     it('reports it as the engine does, down to the error type', async () => {
       const caerus = aMock(1);
-      await caerus.take('seat_A12');
+      await caerus.unitary('seat_A12').take();
 
-      const error = await caerus.take('seat_A12').catch((caught: unknown) => caught);
+      const error = await caerus.unitary('seat_A12').take().catch((caught: unknown) => caught);
 
       expect(error).toBeInstanceOf(ConflictError);
       expect((error as ConflictError).code).toBe('CONFLICT');
@@ -88,25 +88,25 @@ describe('the in-memory client', () => {
     it('applies the same rule to takeMany', async () => {
       const caerus = aMock(3);
 
-      await expect(caerus.takeMany('seat_A12', 4)).rejects.toBeInstanceOf(ConflictError);
+      await expect(caerus.pooled('seat_A12').takeMany(4)).rejects.toBeInstanceOf(ConflictError);
     });
 
     it('does not know about resources nobody created', async () => {
-      await expect(aMock().take('seat_ZZZ')).rejects.toBeInstanceOf(ResourceNotFoundError);
+      await expect(aMock().unitary('seat_ZZZ').take()).rejects.toBeInstanceOf(ResourceNotFoundError);
     });
 
     it('creates resources through the API too', async () => {
       const caerus = new InMemoryCaerusClient();
 
-      const created = await caerus.createResource('seat', 'seat_B1', 3);
-      const reservation = await caerus.take('seat_B1');
+      const created = await caerus.createMultiple('seat', 'seat_B1', 3);
+      const holder = await caerus.unitary('seat_B1').take();
 
       expect(created.availableAmount).toBe(3);
-      expect(reservation.status).toBe('PENDING');
+      expect(holder.status).toBe('PENDING');
     });
 
     it('refuses to create the same key twice', async () => {
-      await expect(aMock().createResource('seat', 'seat_A12', 1)).rejects.toBeInstanceOf(
+      await expect(aMock().createMultiple('seat', 'seat_A12', 1)).rejects.toBeInstanceOf(
         ConflictError,
       );
     });
@@ -115,12 +115,12 @@ describe('the in-memory client', () => {
   // --- Time is an input ------------------------------------------------------------
 
   describe('expiry', () => {
-    it('gives reservations a real expiresAt', async () => {
+    it('gives holders a real expiresAt', async () => {
       const caerus = aMock();
 
-      const reservation = await caerus.take('seat_A12', { ttlSeconds: 600 });
+      const holder = await caerus.unitary('seat_A12').take({ ttlSeconds: 600 });
 
-      const secondsAway = (reservation.expiresAt.getTime() - Date.now()) / 1000;
+      const secondsAway = (holder.expiresAt.getTime() - Date.now()) / 1000;
       expect(secondsAway).toBeGreaterThan(590);
       expect(secondsAway).toBeLessThan(610);
     });
@@ -129,34 +129,34 @@ describe('the in-memory client', () => {
     it('does not expire anything on its own', async () => {
       const caerus = aMock();
 
-      const reservation = await caerus.take('seat_A12', { ttlSeconds: 1 });
+      const holder = await caerus.unitary('seat_A12').take({ ttlSeconds: 1 });
       await new Promise((resolve) => setTimeout(resolve, 30));
 
-      expect((await caerus.getReservation(reservation.id)).status).toBe('PENDING');
+      expect((await caerus.getResourceHolder(holder.id)).status).toBe('PENDING');
     });
 
     it('expires what is past due when the clock moves', async () => {
       const caerus = aMock();
 
-      const reservation = await caerus.take('seat_A12', { ttlSeconds: 300 });
+      const holder = await caerus.unitary('seat_A12').take({ ttlSeconds: 300 });
       caerus.advanceTime(301);
 
-      expect((await caerus.getReservation(reservation.id)).status).toBe('FAILED');
+      expect((await caerus.getResourceHolder(holder.id)).status).toBe('FAILED');
     });
 
     it('leaves alone what is not due yet', async () => {
       const caerus = aMock();
 
-      const reservation = await caerus.take('seat_A12', { ttlSeconds: 300 });
+      const holder = await caerus.unitary('seat_A12').take({ ttlSeconds: 300 });
       caerus.advanceTime(299);
 
-      expect((await caerus.getReservation(reservation.id)).status).toBe('PENDING');
+      expect((await caerus.getResourceHolder(holder.id)).status).toBe('PENDING');
     });
 
-    it('returns the units when a reservation expires', async () => {
+    it('returns the units when a holder expires', async () => {
       const caerus = aMock(2);
 
-      await caerus.takeMany('seat_A12', 2);
+      await caerus.pooled('seat_A12').takeMany(2);
       caerus.advanceTime(1000);
 
       expect(await caerus.getResource('seat_A12')).toMatchObject({
@@ -165,40 +165,40 @@ describe('the in-memory client', () => {
       });
     });
 
-    it('expires one reservation on demand', async () => {
+    it('expires one holder on demand', async () => {
       const caerus = aMock();
 
-      const reservation = await caerus.take('seat_A12');
-      caerus.expire(reservation.id);
+      const holder = await caerus.unitary('seat_A12').take();
+      caerus.expire(holder.id);
 
-      expect((await caerus.getReservation(reservation.id)).status).toBe('FAILED');
+      expect((await caerus.getResourceHolder(holder.id)).status).toBe('FAILED');
     });
 
     it('refuses to confirm one that expired', async () => {
       const caerus = aMock();
 
-      const reservation = await caerus.take('seat_A12');
-      caerus.expire(reservation.id);
+      const holder = await caerus.unitary('seat_A12').take();
+      caerus.expire(holder.id);
 
-      await expect(caerus.confirm(reservation.id)).rejects.toBeInstanceOf(ConflictError);
+      await expect(caerus.confirm(holder.id)).rejects.toBeInstanceOf(ConflictError);
     });
 
     /** Milliseconds in, whole seconds applied, rounding up — the way the engine does it. */
     it('extends the expiry by the milliseconds it is given', async () => {
       const caerus = aMock();
 
-      const taken = await caerus.take('seat_A12', { ttlSeconds: 300 });
+      const taken = await caerus.unitary('seat_A12').take({ ttlSeconds: 300 });
       const extended = await caerus.extend(taken.id, 300_000);
       caerus.advanceTime(301);
 
       expect(extended.expiresAt.getTime() - taken.expiresAt.getTime()).toBe(300_000);
-      expect((await caerus.getReservation(taken.id)).status).toBe('PENDING');
+      expect((await caerus.getResourceHolder(taken.id)).status).toBe('PENDING');
     });
 
     it('rounds a sub-second extension up to one second', async () => {
       const caerus = aMock();
 
-      const taken = await caerus.take('seat_A12', { ttlSeconds: 300 });
+      const taken = await caerus.unitary('seat_A12').take({ ttlSeconds: 300 });
       const extended = await caerus.extend(taken.id, 300);
 
       expect(extended.expiresAt.getTime() - taken.expiresAt.getTime()).toBe(1_000);
@@ -216,9 +216,9 @@ describe('the in-memory client', () => {
       const caerus = aMock();
       caerus.failNext('take', new ConflictError('Out of stock for resource: seat_A12'));
 
-      await expect(caerus.take('seat_A12')).rejects.toThrow('Out of stock');
+      await expect(caerus.unitary('seat_A12').take()).rejects.toThrow('Out of stock');
       // and only that one
-      await expect(caerus.take('seat_A12')).resolves.toMatchObject({ status: 'PENDING' });
+      await expect(caerus.unitary('seat_A12').take()).resolves.toMatchObject({ status: 'PENDING' });
     });
 
     it('queues one failure per call', async () => {
@@ -226,9 +226,9 @@ describe('the in-memory client', () => {
       caerus.failNext('take', new ConflictError('first'));
       caerus.failNext('take', new ConflictError('second'));
 
-      await expect(caerus.take('seat_A12')).rejects.toThrow('first');
-      await expect(caerus.take('seat_A12')).rejects.toThrow('second');
-      await expect(caerus.take('seat_A12')).resolves.toBeDefined();
+      await expect(caerus.unitary('seat_A12').take()).rejects.toThrow('first');
+      await expect(caerus.unitary('seat_A12').take()).rejects.toThrow('second');
+      await expect(caerus.unitary('seat_A12').take()).resolves.toBeDefined();
     });
 
     it('forgets them when asked', async () => {
@@ -236,7 +236,7 @@ describe('the in-memory client', () => {
       caerus.failNext('take', new ConflictError('nope'));
       caerus.clearFailures();
 
-      await expect(caerus.take('seat_A12')).resolves.toBeDefined();
+      await expect(caerus.unitary('seat_A12').take()).resolves.toBeDefined();
     });
 
     /**
@@ -245,7 +245,7 @@ describe('the in-memory client', () => {
      */
     it('lets a caller exercise a release that fails', async () => {
       const caerus = aMock();
-      const holder = await caerus.take('seat_A12');
+      const holder = await caerus.unitary('seat_A12').take();
       caerus.failNext('release', new ConflictError('release exploded'));
 
       await expect(caerus.release(holder.id)).rejects.toThrow('release exploded');
@@ -258,7 +258,7 @@ describe('the in-memory client', () => {
     it('keeps the units taken after a confirm', async () => {
       const caerus = aMock();
 
-      const holder = await caerus.take('seat_A12');
+      const holder = await caerus.unitary('seat_A12').take();
       await caerus.confirm(holder.id);
 
       expect(await caerus.getResource('seat_A12')).toMatchObject({
@@ -270,19 +270,19 @@ describe('the in-memory client', () => {
     it('reports FAILED from a query rather than throwing', async () => {
       const caerus = aMock();
 
-      const reservation = await caerus.take('seat_A12');
-      caerus.expire(reservation.id);
+      const holder = await caerus.unitary('seat_A12').take();
+      caerus.expire(holder.id);
 
-      await expect(caerus.getReservation(reservation.id)).resolves.toMatchObject({
+      await expect(caerus.getResourceHolder(holder.id)).resolves.toMatchObject({
         status: 'FAILED',
       });
     });
 
-    it('gives back the first reservation for a repeated idempotency key', async () => {
+    it('gives back the first holder for a repeated idempotency key', async () => {
       const caerus = aMock(5);
 
-      const first = await caerus.take('seat_A12', { idempotencyKey: 'order-1' });
-      const again = await caerus.take('seat_A12', { idempotencyKey: 'order-1' });
+      const first = await caerus.unitary('seat_A12').take({ idempotencyKey: 'order-1' });
+      const again = await caerus.unitary('seat_A12').take({ idempotencyKey: 'order-1' });
 
       expect(again.id).toBe(first.id);
       expect(await caerus.getResource('seat_A12')).toMatchObject({ pendingCount: 1 });
@@ -291,14 +291,13 @@ describe('the in-memory client', () => {
     it('keeps metadata as an object', async () => {
       const caerus = aMock();
 
-      const reservation = await caerus.take('seat_A12', { metadata: { orderId: '12345' } });
+      const holder = await caerus.unitary('seat_A12').take({ metadata: { orderId: '12345' } });
 
-      expect(reservation.metadata).toEqual({ orderId: '12345' });
+      expect(holder.metadata).toEqual({ orderId: '12345' });
     });
 
     it.each([
-      ['an empty resource key', (caerus: InMemoryCaerusClient) => caerus.take('  ')],
-      ['a zero amount', (caerus: InMemoryCaerusClient) => caerus.takeMany('seat_A12', 0)],
+      ['a zero amount', (caerus: InMemoryCaerusClient) => caerus.pooled('seat_A12').takeMany(0)],
       ['a zero extension', (caerus: InMemoryCaerusClient) => caerus.extend('hld-1', 0)],
     ])('rejects %s the same way', async (_case, call) => {
       await expect(call(aMock())).rejects.toBeInstanceOf(ValidationError);
@@ -308,19 +307,19 @@ describe('the in-memory client', () => {
       const caerus = aMock();
       caerus.close();
 
-      await expect(caerus.take('seat_A12')).rejects.toThrow(/closed/);
+      await expect(caerus.unitary('seat_A12').take()).rejects.toThrow(/closed/);
     });
   });
 
   it('shows its state for assertions the API cannot make', async () => {
     const caerus = aMock(3);
-    await caerus.take('seat_A12');
+    await caerus.unitary('seat_A12').take();
 
-    const { resources, reservations } = caerus.snapshot();
+    const { resources, holders } = caerus.snapshot();
 
     expect(resources).toHaveLength(1);
-    expect(reservations).toHaveLength(1);
-    expect(reservations[0]?.status).toBe('PENDING');
+    expect(holders).toHaveLength(1);
+    expect(holders[0]?.status).toBe('PENDING');
   });
 
   it('pages a group', async () => {

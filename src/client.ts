@@ -1,27 +1,25 @@
 import type { SharedResourceApi } from './api.js';
 import { ValidationError } from './errors.js';
+import { pooledHandle, unitaryHandle } from './internal/handles.js';
 import {
   assertUsable,
   encodeMetadata,
-  toReservation,
   toResource,
+  toResourceHolder,
   toResourcePage,
 } from './internal/mapping.js';
 import { Transport } from './internal/transport.js';
-import {
-  resolveOptions,
-  type CaerusClientOptions,
-  type CaerusLogger,
-  type ResolvedClientOptions,
-} from './options.js';
+import { resolveOptions, type CaerusClientOptions, type ResolvedClientOptions } from './options.js';
 import type {
   ConfirmOptions,
   CreateResourceOptions,
   GetResourcesByGroupOptions,
-  Reservation,
+  PooledResource,
   Resource,
+  ResourceHolder,
   ResourcePage,
   TakeOptions,
+  UnitaryResource,
 } from './types.js';
 
 /**
@@ -29,7 +27,9 @@ import type {
  *
  * ```typescript
  * const caerus = new CaerusClient({ endpoint: 'caerus.example.com:9090', apiKey });
- * const reservation = await caerus.take('seat_A12');
+ *
+ * const seat = caerus.unitary('seat_A12');
+ * const holder = await seat.take();
  * ```
  *
  * One instance is meant to live as long as the process does: it holds a gRPC channel
@@ -48,14 +48,12 @@ export class CaerusClient implements SharedResourceApi {
   readonly #transport: Transport;
   readonly #endpoint: string;
   readonly #timeoutMs: number;
-  readonly #logger: CaerusLogger;
 
   constructor(options: CaerusClientOptions) {
     const resolved: ResolvedClientOptions = resolveOptions(options);
 
     this.#endpoint = resolved.endpoint;
     this.#timeoutMs = resolved.timeoutMs;
-    this.#logger = resolved.logger;
     this.#transport = new Transport(resolved);
   }
 
@@ -72,24 +70,50 @@ export class CaerusClient implements SharedResourceApi {
   // --- Inventory -----------------------------------------------------------------
 
   /**
-   * Declares something that can be reserved.
-   *
-   * Templates are created in the dashboard; the concrete resources that follow their
-   * rules are created here, and nowhere else.
+   * Declares a resource that holds exactly one unit: a numbered seat, a specific room.
    *
    * ```typescript
-   * await caerus.createResource('seat', 'seat_A12', 1, { groupKey: 'row_A' });
+   * await caerus.createUnitary('seat', 'seat_A12', { groupKey: 'row_A' });
+   * ```
+   *
+   * No amount, because a unitary resource always has one.
+   *
+   * Templates — hold duration, whether metadata is kept, what happens when stock runs
+   * out — are created in the dashboard. The resources that follow them are created here.
+   */
+  async createUnitary(
+    templateName: string,
+    key: string,
+    options: CreateResourceOptions = {},
+  ): Promise<Resource> {
+    return this.#createResource(templateName, key, 1, options);
+  }
+
+  /**
+   * Declares a resource with several interchangeable units: general admission, licences.
+   *
+   * ```typescript
+   * await caerus.createMultiple('ga_pool', 'general_admission', 500);
    * ```
    */
-  async createResource(
+  async createMultiple(
     templateName: string,
     key: string,
     availableAmount: number,
     options: CreateResourceOptions = {},
   ): Promise<Resource> {
+    requirePositive(availableAmount, 'availableAmount');
+    return this.#createResource(templateName, key, availableAmount, options);
+  }
+
+  async #createResource(
+    templateName: string,
+    key: string,
+    availableAmount: number,
+    options: CreateResourceOptions,
+  ): Promise<Resource> {
     requireText(templateName, 'templateName');
     requireText(key, 'key');
-    requirePositive(availableAmount, 'availableAmount');
 
     const response = await this.#transport.unary(
       this.#transport.raw.createResource.bind(this.#transport.raw),
@@ -105,48 +129,42 @@ export class CaerusClient implements SharedResourceApi {
     return toResource(response);
   }
 
-  // --- Reservations --------------------------------------------------------------
+  // --- Handles -------------------------------------------------------------------
 
   /**
-   * Holds one unit of a resource.
+   * A handle on a single-unit resource.
    *
    * ```typescript
-   * const reservation = await caerus.take('seat_A12');
+   * const holder = await caerus.unitary('seat_A12').take();
    * ```
    *
-   * Throws when there is nothing to hold. A reservation that comes back `QUEUED` is
-   * real but not yours yet: the engine is waiting for stock, and you decide whether to
-   * poll for it or give up.
+   * It offers only `take`, so asking for three of something there is one of does not
+   * compile. Nothing is fetched here: the handle records what you know the resource to
+   * be, which is what lets the type hold at the point of use — usually a different
+   * service from the one that declared the inventory.
+   *
+   * Declaring it wrong is still possible. `pooled('seat_A12').takeMany(3)` compiles and
+   * the engine refuses it at runtime, the same as before. This is a safety net, not a
+   * guarantee.
    */
-  async take(resourceKey: string, options: TakeOptions = {}): Promise<Reservation> {
-    return this.#take(resourceKey, 1, options);
+  unitary(key: string): UnitaryResource {
+    return unitaryHandle(key, (resourceKey, amount, options) =>
+      this.#take(resourceKey, amount, options),
+    );
   }
 
-  /**
-   * Holds several units at once.
-   *
-   * ```typescript
-   * const reservation = await caerus.takeMany('general_admission', 4);
-   * ```
-   *
-   * A separate method rather than an optional amount on `take`, because the SDKs coming
-   * for other languages have to look the same and Go has no overloading.
-   */
-  async takeMany(
-    resourceKey: string,
-    amount: number,
-    options: TakeOptions = {},
-  ): Promise<Reservation> {
-    requirePositive(amount, 'amount');
-    return this.#take(resourceKey, amount, options);
+  /** A handle on a multi-unit resource. Offers `take` and `takeMany`. */
+  pooled(key: string): PooledResource {
+    return pooledHandle(key, (resourceKey, amount, options) =>
+      this.#take(resourceKey, amount, options),
+    );
   }
 
   async #take(
     resourceKey: string,
     amount: number,
     options: TakeOptions,
-  ): Promise<Reservation> {
-    requireText(resourceKey, 'resourceKey');
+  ): Promise<ResourceHolder> {
     if (options.ttlSeconds !== undefined) {
       requirePositive(options.ttlSeconds, 'ttlSeconds');
     }
@@ -164,41 +182,43 @@ export class CaerusClient implements SharedResourceApi {
       },
     );
 
-    return assertUsable(toReservation(response));
+    return assertUsable(toResourceHolder(response));
   }
 
+  // --- Holders -------------------------------------------------------------------
+
   /**
-   * Settles a reservation for good. The units stop being pending and stay taken.
+   * Settles a holder for good. The units stop being pending and stay taken.
    *
    * ```typescript
-   * await caerus.confirm(reservation.id, { metadata: { paymentId } });
+   * await caerus.confirm(holder.id, { metadata: { paymentId } });
    * ```
    */
-  async confirm(reservationId: string, options: ConfirmOptions = {}): Promise<Reservation> {
-    requireText(reservationId, 'reservationId');
+  async confirm(resourceHolderId: string, options: ConfirmOptions = {}): Promise<ResourceHolder> {
+    requireText(resourceHolderId, 'resourceHolderId');
 
     const response = await this.#transport.unary(
       this.#transport.raw.confirm.bind(this.#transport.raw),
       {
-        resourceHolderId: reservationId,
+        resourceHolderId,
         metadataPatch: encodeMetadata(options.metadata),
       },
     );
 
-    return assertUsable(toReservation(response));
+    return assertUsable(toResourceHolder(response));
   }
 
   /**
-   * Gives the units back before the reservation lapses.
+   * Gives the units back before the holder lapses.
    *
    * Worth calling on every path that abandons a checkout: without it the stock stays
    * held until the TTL runs out.
    */
-  async release(reservationId: string): Promise<void> {
-    requireText(reservationId, 'reservationId');
+  async release(resourceHolderId: string): Promise<void> {
+    requireText(resourceHolderId, 'resourceHolderId');
 
     await this.#transport.unary(this.#transport.raw.release.bind(this.#transport.raw), {
-      resourceHolderId: reservationId,
+      resourceHolderId,
     });
   }
 
@@ -216,16 +236,33 @@ export class CaerusClient implements SharedResourceApi {
    * Never retried automatically: a repeated extend adds the time twice and says nothing
    * about it.
    */
-  async extend(reservationId: string, extraMs: number): Promise<Reservation> {
-    requireText(reservationId, 'reservationId');
+  async extend(resourceHolderId: string, extraMs: number): Promise<ResourceHolder> {
+    requireText(resourceHolderId, 'resourceHolderId');
     requirePositive(extraMs, 'extraMs');
 
     const response = await this.#transport.unary(
       this.#transport.raw.extend.bind(this.#transport.raw),
-      { resourceHolderId: reservationId, extraMs },
+      { resourceHolderId, extraMs },
     );
 
-    return assertUsable(toReservation(response));
+    return assertUsable(toResourceHolder(response));
+  }
+
+  /**
+   * Reads a holder as it stands.
+   *
+   * This is the one place a `FAILED` holder is returned rather than thrown: asking what
+   * state something is in and being told FAILED is an answer, not a failure.
+   */
+  async getResourceHolder(resourceHolderId: string): Promise<ResourceHolder> {
+    requireText(resourceHolderId, 'resourceHolderId');
+
+    const response = await this.#transport.unary(
+      this.#transport.raw.getResourceHolder.bind(this.#transport.raw),
+      { resourceHolderId },
+    );
+
+    return toResourceHolder(response);
   }
 
   // --- Queries -------------------------------------------------------------------
@@ -255,23 +292,6 @@ export class CaerusClient implements SharedResourceApi {
     );
 
     return toResourcePage(response);
-  }
-
-  /**
-   * Reads a reservation as it stands.
-   *
-   * This is the one place a `FAILED` reservation is returned rather than thrown: asking
-   * what state something is in and being told FAILED is an answer, not a failure.
-   */
-  async getReservation(reservationId: string): Promise<Reservation> {
-    requireText(reservationId, 'reservationId');
-
-    const response = await this.#transport.unary(
-      this.#transport.raw.getResourceHolder.bind(this.#transport.raw),
-      { resourceHolderId: reservationId },
-    );
-
-    return toReservation(response);
   }
 
   /**

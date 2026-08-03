@@ -1,15 +1,17 @@
 import type { SharedResourceApi } from './api.js';
 import { CaerusError, ConflictError, ResourceNotFoundError, ValidationError } from './errors.js';
-import { DEFAULT_LOGGER, type CaerusLogger } from './options.js';
+import { pooledHandle, unitaryHandle } from './internal/handles.js';
 import type {
   ConfirmOptions,
   CreateResourceOptions,
   GetResourcesByGroupOptions,
   Metadata,
-  Reservation,
+  PooledResource,
   Resource,
+  ResourceHolder,
   ResourcePage,
   TakeOptions,
+  UnitaryResource,
 } from './types.js';
 
 /** A resource the mock starts out knowing about. */
@@ -23,7 +25,8 @@ export interface MockResourceSeed {
 
 /** Which method to make fail. */
 export type MockMethod =
-  | 'createResource'
+  | 'createUnitary'
+  | 'createMultiple'
   | 'take'
   | 'takeMany'
   | 'confirm'
@@ -31,7 +34,7 @@ export type MockMethod =
   | 'extend'
   | 'getResource'
   | 'getResourcesByGroup'
-  | 'getReservation';
+  | 'getResourceHolder';
 
 export interface MockOptions {
   /** Stock to start with. Resources can also be created through the API. */
@@ -40,7 +43,6 @@ export interface MockOptions {
   defaultTtlSeconds?: number;
   /** Page size for group queries when none is asked for. Defaults to 25. */
   defaultPageSize?: number;
-  logger?: CaerusLogger;
 }
 
 interface StoredResource {
@@ -53,15 +55,17 @@ interface StoredResource {
   metadata?: Metadata;
 }
 
-interface StoredReservation {
+interface StoredHolder {
   id: string;
   resourceKey: string;
   resourceId: string;
   amount: number;
-  status: Reservation['status'];
+  status: ResourceHolderStatusValue;
   expiresAtSeconds: number;
   metadata?: Metadata;
 }
+
+type ResourceHolderStatusValue = ResourceHolder['status'];
 
 const DEFAULT_TTL_SECONDS = 300;
 const DEFAULT_PAGE_SIZE = 25;
@@ -69,39 +73,38 @@ const DEFAULT_PAGE_SIZE = 25;
 /**
  * Caerus, in memory, for testing an integration without running anything.
  *
- * It implements {@link SharedResourceApi}, so it drops into wherever the real client
- * goes. Stock is tracked for real — taking decrements it, releasing gives it back — so a
- * test that reserves more than exists fails the way production would.
+ * It implements {@link SharedResourceApi}, handles included, so it drops into wherever
+ * the real client goes. Stock is tracked for real — taking decrements it, releasing gives
+ * it back — so a test that takes more than exists fails the way production would.
  *
  * ```typescript
  * const caerus = new InMemoryCaerusClient({
  *   resources: [{ key: 'seat_A12', availableAmount: 1 }],
  * });
  *
- * const holder = await caerus.take('seat_A12');
+ * const holder = await caerus.unitary('seat_A12').take();
  * await caerus.confirm(holder.id);
  * ```
  *
  * ## Time does not pass on its own
  *
- * Reservations carry a real `expiresAt`, but nothing expires until you say so:
+ * Holders carry a real `expiresAt`, but nothing expires until you say so:
  *
  * ```typescript
  * caerus.advanceTime(600);   // ten minutes later
  * ```
  *
- * A mock that expired reservations on a wall clock would make its users' tests wait, and
- * then fail now and then depending on how busy the machine was. Tests are supposed to be
- * the deterministic part. Time is an input here, like the stock.
+ * A mock that expired holders on a wall clock would make its users' tests wait, and then
+ * fail now and then depending on how busy the machine was. Tests are supposed to be the
+ * deterministic part. Time is an input here, like the stock.
  */
 export class InMemoryCaerusClient implements SharedResourceApi {
   readonly #resources = new Map<string, StoredResource>();
-  readonly #reservations = new Map<string, StoredReservation>();
+  readonly #holders = new Map<string, StoredHolder>();
   readonly #idempotency = new Map<string, string>();
   readonly #failures = new Map<MockMethod, CaerusError[]>();
   readonly #defaultTtlSeconds: number;
   readonly #defaultPageSize: number;
-  readonly #logger: CaerusLogger;
 
   #nowSeconds = Math.floor(Date.now() / 1000);
   #sequence = 0;
@@ -110,7 +113,6 @@ export class InMemoryCaerusClient implements SharedResourceApi {
   constructor(options: MockOptions = {}) {
     this.#defaultTtlSeconds = options.defaultTtlSeconds ?? DEFAULT_TTL_SECONDS;
     this.#defaultPageSize = options.defaultPageSize ?? DEFAULT_PAGE_SIZE;
-    this.#logger = options.logger ?? DEFAULT_LOGGER;
 
     for (const seed of options.resources ?? []) {
       this.#resources.set(seed.key, {
@@ -160,44 +162,60 @@ export class InMemoryCaerusClient implements SharedResourceApi {
 
     this.#nowSeconds += seconds;
 
-    for (const reservation of this.#reservations.values()) {
-      if (reservation.status === 'PENDING' && reservation.expiresAtSeconds <= this.#nowSeconds) {
-        this.#expire(reservation);
+    for (const holder of this.#holders.values()) {
+      if (holder.status === 'PENDING' && holder.expiresAtSeconds <= this.#nowSeconds) {
+        this.#expire(holder);
       }
     }
   }
 
-  /** Expires one reservation regardless of its TTL. */
-  expire(reservationId: string): void {
-    const reservation = this.#requireReservation(reservationId);
-    if (reservation.status !== 'PENDING') {
-      throw new ConflictError(
-        `Reservation ${reservationId} is ${reservation.status} and cannot expire.`,
-      );
+  /** Expires one holder regardless of its TTL. */
+  expire(resourceHolderId: string): void {
+    const holder = this.#requireHolder(resourceHolderId);
+    if (holder.status !== 'PENDING') {
+      throw new ConflictError(`Holder ${resourceHolderId} is ${holder.status} and cannot expire.`);
     }
-    this.#expire(reservation);
+    this.#expire(holder);
   }
 
   /** What the mock currently believes, for assertions that go beyond the API. */
-  snapshot(): { resources: Resource[]; reservations: Reservation[] } {
+  snapshot(): { resources: Resource[]; holders: ResourceHolder[] } {
     return {
       resources: [...this.#resources.values()].map((resource) => this.#toResource(resource)),
-      reservations: [...this.#reservations.values()].map((held) => this.#toReservation(held)),
+      holders: [...this.#holders.values()].map((held) => this.#toHolder(held)),
     };
   }
 
-  // --- The API ----------------------------------------------------------------------
+  // --- Inventory --------------------------------------------------------------------
 
-  async createResource(
+  async createUnitary(
+    templateName: string,
+    key: string,
+    options: CreateResourceOptions = {},
+  ): Promise<Resource> {
+    this.#guard('createUnitary');
+    return this.#createResource(templateName, key, 1, options);
+  }
+
+  async createMultiple(
     templateName: string,
     key: string,
     availableAmount: number,
     options: CreateResourceOptions = {},
   ): Promise<Resource> {
-    this.#guard('createResource');
+    this.#guard('createMultiple');
+    requirePositive(availableAmount, 'availableAmount');
+    return this.#createResource(templateName, key, availableAmount, options);
+  }
+
+  #createResource(
+    templateName: string,
+    key: string,
+    availableAmount: number,
+    options: CreateResourceOptions,
+  ): Resource {
     requireText(templateName, 'templateName');
     requireText(key, 'key');
-    requirePositive(availableAmount, 'availableAmount');
 
     if (this.#resources.has(key)) {
       throw new ConflictError(`A resource with key ${key} already exists.`);
@@ -217,70 +235,86 @@ export class InMemoryCaerusClient implements SharedResourceApi {
     return this.#toResource(resource);
   }
 
-  async take(resourceKey: string, options: TakeOptions = {}): Promise<Reservation> {
-    this.#guard('take');
-    return this.#take(resourceKey, 1, options);
+  // --- Handles ----------------------------------------------------------------------
+
+  unitary(key: string): UnitaryResource {
+    // async, so a refusal comes back as a rejected promise rather than a synchronous
+    // throw — which is how the real client behaves and therefore how this must too.
+    return unitaryHandle(key, async (resourceKey, amount, options) => {
+      this.#guard('take');
+      return this.#take(resourceKey, amount, options);
+    });
   }
 
-  async takeMany(
-    resourceKey: string,
-    amount: number,
-    options: TakeOptions = {},
-  ): Promise<Reservation> {
-    this.#guard('takeMany');
-    requirePositive(amount, 'amount');
-    return this.#take(resourceKey, amount, options);
+  pooled(key: string): PooledResource {
+    return pooledHandle(key, async (resourceKey, amount, options) => {
+      this.#guard(amount === 1 ? 'take' : 'takeMany');
+      return this.#take(resourceKey, amount, options);
+    });
   }
 
-  async confirm(reservationId: string, options: ConfirmOptions = {}): Promise<Reservation> {
+  // --- Holders ----------------------------------------------------------------------
+
+  async confirm(
+    resourceHolderId: string,
+    options: ConfirmOptions = {},
+  ): Promise<ResourceHolder> {
     this.#guard('confirm');
-    const reservation = this.#requireReservation(reservationId);
+    const holder = this.#requireHolder(resourceHolderId);
 
-    if (reservation.status !== 'PENDING') {
+    if (holder.status !== 'PENDING') {
       throw new ConflictError(
-        `Reservation ${reservationId} is ${reservation.status} and cannot be confirmed.`,
+        `Holder ${resourceHolderId} is ${holder.status} and cannot be confirmed.`,
       );
     }
 
-    const resource = this.#requireResource(reservation.resourceKey);
+    const resource = this.#requireResource(holder.resourceKey);
     // Confirming keeps the units taken: they stop being pending, they do not come back.
-    resource.pendingCount -= reservation.amount;
-    reservation.status = 'CONFIRMED';
+    resource.pendingCount -= holder.amount;
+    holder.status = 'CONFIRMED';
     if (options.metadata !== undefined) {
-      reservation.metadata = options.metadata;
+      holder.metadata = options.metadata;
     }
 
-    return this.#toReservation(reservation);
+    return this.#toHolder(holder);
   }
 
-  async release(reservationId: string): Promise<void> {
+  async release(resourceHolderId: string): Promise<void> {
     this.#guard('release');
-    const reservation = this.#requireReservation(reservationId);
+    const holder = this.#requireHolder(resourceHolderId);
 
-    if (reservation.status !== 'PENDING') {
+    if (holder.status !== 'PENDING') {
       throw new ConflictError(
-        `Reservation ${reservationId} is ${reservation.status} and cannot be released.`,
+        `Holder ${resourceHolderId} is ${holder.status} and cannot be released.`,
       );
     }
 
-    this.#giveBack(reservation, 'RELEASED');
+    this.#giveBack(holder, 'RELEASED');
   }
 
-  async extend(reservationId: string, extraMs: number): Promise<Reservation> {
+  async extend(resourceHolderId: string, extraMs: number): Promise<ResourceHolder> {
     this.#guard('extend');
     requirePositive(extraMs, 'extraMs');
-    const reservation = this.#requireReservation(reservationId);
+    const holder = this.#requireHolder(resourceHolderId);
 
-    if (reservation.status !== 'PENDING') {
+    if (holder.status !== 'PENDING') {
       throw new ConflictError(
-        `Reservation ${reservationId} is ${reservation.status} and cannot be extended.`,
+        `Holder ${resourceHolderId} is ${holder.status} and cannot be extended.`,
       );
     }
 
     // Rounding up, the way the engine does: anything under a second buys one second.
-    reservation.expiresAtSeconds += Math.ceil(extraMs / 1000);
-    return this.#toReservation(reservation);
+    holder.expiresAtSeconds += Math.ceil(extraMs / 1000);
+    return this.#toHolder(holder);
   }
+
+  async getResourceHolder(resourceHolderId: string): Promise<ResourceHolder> {
+    this.#guard('getResourceHolder');
+    // Like the real client, a query reports FAILED rather than throwing on it.
+    return this.#toHolder(this.#requireHolder(resourceHolderId));
+  }
+
+  // --- Queries ----------------------------------------------------------------------
 
   async getResource(key: string): Promise<Resource> {
     this.#guard('getResource');
@@ -309,30 +343,23 @@ export class InMemoryCaerusClient implements SharedResourceApi {
     };
   }
 
-  async getReservation(reservationId: string): Promise<Reservation> {
-    this.#guard('getReservation');
-    // Like the real client, a query reports FAILED rather than throwing on it.
-    return this.#toReservation(this.#requireReservation(reservationId));
-  }
-
   close(): void {
     this.#closed = true;
   }
 
   // --- Internals --------------------------------------------------------------------
 
-  #take(resourceKey: string, amount: number, options: TakeOptions): Reservation {
-    requireText(resourceKey, 'resourceKey');
+  #take(resourceKey: string, amount: number, options: TakeOptions): ResourceHolder {
     if (options.ttlSeconds !== undefined) {
       requirePositive(options.ttlSeconds, 'ttlSeconds');
     }
 
-    // Repeating an idempotency key gives back the first reservation instead of taking
-    // more stock, which is what the engine does and what makes a retry safe.
+    // Repeating an idempotency key gives back the first holder instead of taking more
+    // stock, which is what the engine does and what makes a retry safe.
     if (options.idempotencyKey !== undefined) {
       const known = this.#idempotency.get(options.idempotencyKey);
       if (known !== undefined) {
-        return this.#toReservation(this.#requireReservation(known));
+        return this.#toHolder(this.#requireHolder(known));
       }
     }
 
@@ -346,7 +373,7 @@ export class InMemoryCaerusClient implements SharedResourceApi {
     resource.availableAmount -= amount;
     resource.pendingCount += amount;
 
-    const reservation: StoredReservation = {
+    const holder: StoredHolder = {
       id: this.#nextId('hld'),
       resourceKey,
       resourceId: resource.id,
@@ -355,25 +382,25 @@ export class InMemoryCaerusClient implements SharedResourceApi {
       expiresAtSeconds: this.#nowSeconds + (options.ttlSeconds ?? this.#defaultTtlSeconds),
       metadata: options.metadata,
     };
-    this.#reservations.set(reservation.id, reservation);
+    this.#holders.set(holder.id, holder);
 
     if (options.idempotencyKey !== undefined) {
-      this.#idempotency.set(options.idempotencyKey, reservation.id);
+      this.#idempotency.set(options.idempotencyKey, holder.id);
     }
 
-    return this.#toReservation(reservation);
+    return this.#toHolder(holder);
   }
 
-  #expire(reservation: StoredReservation): void {
-    this.#giveBack(reservation, 'FAILED');
+  #expire(holder: StoredHolder): void {
+    this.#giveBack(holder, 'FAILED');
   }
 
-  /** Returns the units to the resource and marks the reservation with its new status. */
-  #giveBack(reservation: StoredReservation, status: Reservation['status']): void {
-    const resource = this.#requireResource(reservation.resourceKey);
-    resource.availableAmount += reservation.amount;
-    resource.pendingCount -= reservation.amount;
-    reservation.status = status;
+  /** Returns the units to the resource and marks the holder with its new status. */
+  #giveBack(holder: StoredHolder, status: ResourceHolderStatusValue): void {
+    const resource = this.#requireResource(holder.resourceKey);
+    resource.availableAmount += holder.amount;
+    resource.pendingCount -= holder.amount;
+    holder.status = status;
   }
 
   #guard(method: MockMethod): void {
@@ -396,13 +423,13 @@ export class InMemoryCaerusClient implements SharedResourceApi {
     return resource;
   }
 
-  #requireReservation(id: string): StoredReservation {
-    requireText(id, 'reservationId');
-    const reservation = this.#reservations.get(id);
-    if (!reservation) {
+  #requireHolder(id: string): StoredHolder {
+    requireText(id, 'resourceHolderId');
+    const holder = this.#holders.get(id);
+    if (!holder) {
       throw new ResourceNotFoundError(`ResourceHolder not found: ${id}`);
     }
-    return reservation;
+    return holder;
   }
 
   #toResource(resource: StoredResource): Resource {
@@ -417,14 +444,14 @@ export class InMemoryCaerusClient implements SharedResourceApi {
     };
   }
 
-  #toReservation(reservation: StoredReservation): Reservation {
+  #toHolder(holder: StoredHolder): ResourceHolder {
     return {
-      id: reservation.id,
-      resourceId: reservation.resourceId,
-      status: reservation.status,
-      amount: reservation.amount,
-      expiresAt: new Date(reservation.expiresAtSeconds * 1000),
-      metadata: reservation.metadata,
+      id: holder.id,
+      resourceId: holder.resourceId,
+      status: holder.status,
+      amount: holder.amount,
+      expiresAt: new Date(holder.expiresAtSeconds * 1000),
+      metadata: holder.metadata,
     };
   }
 

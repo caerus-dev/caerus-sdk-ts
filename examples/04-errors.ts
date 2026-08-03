@@ -22,7 +22,7 @@ const caerus = new CaerusClient({
 declare function chargeCard(amount: number): Promise<{ paymentId: string }>;
 
 export async function buyWithGoodErrors(): Promise<string> {
-  const holder = await caerus.take('seat_A12');
+  const holder = await caerus.unitary('seat_A12').take();
 
   try {
     const { paymentId } = await chargeCard(4500);
@@ -70,7 +70,7 @@ export async function buyWithGoodErrors(): Promise<string> {
 /** Switching on the code instead of the class, when that reads better. */
 export async function describeFailure(): Promise<string> {
   try {
-    await caerus.take('seat_A12');
+    await caerus.unitary('seat_A12').take();
     return 'held';
   } catch (error) {
     if (!(error instanceof CaerusError)) {
@@ -101,7 +101,7 @@ export async function describeFailure(): Promise<string> {
 export async function takeWithRetry(orderId: string): Promise<string> {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
-      const reservation = await caerus.take('seat_A12', { idempotencyKey: orderId });
+      const reservation = await caerus.unitary('seat_A12').take({ idempotencyKey: orderId });
       return reservation.id;
     } catch (error) {
       if (!(error instanceof TimeoutError) || attempt === 3) {

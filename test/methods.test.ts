@@ -37,7 +37,7 @@ describe('the business methods', () => {
 
   describe('take', () => {
     it('asks for exactly one unit', async () => {
-      await caerus.take('seat_A12');
+      await caerus.unitary('seat_A12').take();
 
       expect(engine.lastMethod).toBe('take');
       expect(engine.lastRequest.resourceKey).toBe('seat_A12');
@@ -45,7 +45,7 @@ describe('the business methods', () => {
     });
 
     it('passes the options through', async () => {
-      await caerus.take('seat_A12', {
+      await caerus.unitary('seat_A12').take({
         idempotencyKey: 'order-99',
         ttlSeconds: 120,
         metadata: { orderId: '12345' },
@@ -57,12 +57,14 @@ describe('the business methods', () => {
       });
     });
 
-    it('rejects an empty resource key before calling', async () => {
-      await expect(caerus.take('  ')).rejects.toBeInstanceOf(ValidationError);
+    /** The handle validates its key when it is built, so the mistake surfaces there. */
+    it('refuses to build a handle without a key', () => {
+      expect(() => caerus.unitary('  ')).toThrow(ValidationError);
+      expect(() => caerus.pooled('')).toThrow(ValidationError);
     });
 
     it('rejects a non-positive ttl', async () => {
-      await expect(caerus.take('seat_A12', { ttlSeconds: 0 })).rejects.toBeInstanceOf(
+      await expect(caerus.unitary('seat_A12').take({ ttlSeconds: 0 })).rejects.toBeInstanceOf(
         ValidationError,
       );
     });
@@ -70,14 +72,14 @@ describe('the business methods', () => {
 
   describe('takeMany', () => {
     it('asks for the amount it was given', async () => {
-      await caerus.takeMany('general_admission', 4);
+      await caerus.pooled('general_admission').takeMany(4);
 
       expect(engine.lastRequest.resourceKey).toBe('general_admission');
       expect(engine.lastRequest.amount).toBe(4);
     });
 
     it.each([0, -1])('refuses an amount of %s', async (amount) => {
-      await expect(caerus.takeMany('general_admission', amount)).rejects.toBeInstanceOf(
+      await expect(caerus.pooled('general_admission').takeMany(amount)).rejects.toBeInstanceOf(
         ValidationError,
       );
     });
@@ -85,7 +87,7 @@ describe('the business methods', () => {
 
   // --- Decision G: what each status does -----------------------------------------
 
-  describe('the status of a reservation', () => {
+  describe('the status of a holder', () => {
     /**
      * The trap this closes: no exception was thrown, so a caller assumes they hold the
      * seat. They do not.
@@ -93,35 +95,35 @@ describe('the business methods', () => {
     it('throws when the engine reports FAILED', async () => {
       engine.on('take', (_call, callback) => callback(null, aHolderResponse({ status: 3 })));
 
-      const error = await caerus.take('seat_A12').catch((caught: unknown) => caught);
+      const error = await caerus.unitary('seat_A12').take().catch((caught: unknown) => caught);
 
       expect(error).toBeInstanceOf(ConflictError);
       expect((error as CaerusError).message).toMatch(/FAILED/);
     });
 
     /** QUEUED is real, just not yours yet. The caller decides what to do about it. */
-    it('returns a QUEUED reservation with the status visible', async () => {
+    it('returns a QUEUED holder with the status visible', async () => {
       engine.on('take', (_call, callback) => callback(null, aHolderResponse({ status: 4 })));
 
-      const reservation = await caerus.take('seat_A12');
+      const holder = await caerus.unitary('seat_A12').take();
 
-      expect(reservation.status).toBe('QUEUED');
-      expect(reservation.id).toBe('hld-1');
+      expect(holder.status).toBe('QUEUED');
+      expect(holder.id).toBe('hld-1');
     });
 
     it('returns PENDING on the happy path', async () => {
       engine.on('take', (_call, callback) => callback(null, aHolderResponse({ status: 0 })));
 
-      expect((await caerus.take('seat_A12')).status).toBe('PENDING');
+      expect((await caerus.unitary('seat_A12').take()).status).toBe('PENDING');
     });
 
     /** Asking what state something is in and being told FAILED is an answer. */
-    it('does not throw when a query finds a FAILED reservation', async () => {
+    it('does not throw when a query finds a FAILED holder', async () => {
       engine.on('getResourceHolder', (_call, callback) =>
         callback(null, aHolderResponse({ status: 3 })),
       );
 
-      expect((await caerus.getReservation('hld-1')).status).toBe('FAILED');
+      expect((await caerus.getResourceHolder('hld-1')).status).toBe('FAILED');
     });
 
     it('refuses to guess at a status it does not know', async () => {
@@ -131,7 +133,7 @@ describe('the business methods', () => {
         callback(null, aHolderResponse({ status: 99 as never })),
       );
 
-      await expect(caerus.take('seat_A12')).rejects.toThrow(/unknown status/i);
+      await expect(caerus.unitary('seat_A12').take()).rejects.toThrow(/unknown status/i);
     });
   });
 
@@ -139,7 +141,7 @@ describe('the business methods', () => {
 
   describe('metadata', () => {
     it('goes out as JSON text', async () => {
-      await caerus.take('seat_A12', { metadata: { orderId: '12345', items: 2 } });
+      await caerus.unitary('seat_A12').take({ metadata: { orderId: '12345', items: 2 } });
 
       expect(engine.lastRequest.settings.metadata).toBe('{"orderId":"12345","items":2}');
     });
@@ -150,10 +152,10 @@ describe('the business methods', () => {
         callback(null, aHolderResponse({ metadata: '{"orderId":"12345","items":2}' })),
       );
 
-      const reservation = await caerus.take('seat_A12');
+      const holder = await caerus.unitary('seat_A12').take();
 
-      expect(reservation.metadata).toEqual({ orderId: '12345', items: 2 });
-      expect(typeof reservation.metadata).toBe('object');
+      expect(holder.metadata).toEqual({ orderId: '12345', items: 2 });
+      expect(typeof holder.metadata).toBe('object');
     });
 
     it('survives a round trip unchanged', async () => {
@@ -162,15 +164,15 @@ describe('the business methods', () => {
         callback(null, aHolderResponse({ metadata: call.request.settings.metadata })),
       );
 
-      const reservation = await caerus.take('seat_A12', { metadata: sent });
+      const holder = await caerus.unitary('seat_A12').take({ metadata: sent });
 
-      expect(reservation.metadata).toEqual(sent);
+      expect(holder.metadata).toEqual(sent);
     });
 
     it.each([undefined, ''])('reads %p as no metadata at all', async (raw) => {
       engine.on('take', (_call, callback) => callback(null, aHolderResponse({ metadata: raw })));
 
-      expect((await caerus.take('seat_A12')).metadata).toBeUndefined();
+      expect((await caerus.unitary('seat_A12').take()).metadata).toBeUndefined();
     });
 
     /**
@@ -183,11 +185,11 @@ describe('the business methods', () => {
         callback(null, aHolderResponse({ metadata: 'not json at all' })),
       );
 
-      await expect(caerus.take('seat_A12')).rejects.toThrow(/not a JSON object/);
+      await expect(caerus.unitary('seat_A12').take()).rejects.toThrow(/not a JSON object/);
     });
 
     it('sends nothing when none was given', async () => {
-      await caerus.take('seat_A12');
+      await caerus.unitary('seat_A12').take();
 
       expect(engine.lastRequest.settings.metadata).toBeUndefined();
     });
@@ -203,10 +205,10 @@ describe('the business methods', () => {
         callback(null, aHolderResponse({ expiresAt: epochSeconds })),
       );
 
-      const reservation = await caerus.take('seat_A12');
+      const holder = await caerus.unitary('seat_A12').take();
 
-      expect(reservation.expiresAt).toBeInstanceOf(Date);
-      expect(reservation.expiresAt.toISOString()).toBe('2026-08-02T15:00:00.000Z');
+      expect(holder.expiresAt).toBeInstanceOf(Date);
+      expect(holder.expiresAt.toISOString()).toBe('2026-08-02T15:00:00.000Z');
     });
 
     it('does not land in 1970', async () => {
@@ -214,7 +216,7 @@ describe('the business methods', () => {
         callback(null, aHolderResponse({ expiresAt: 1_785_164_400 })),
       );
 
-      const year = (await caerus.take('seat_A12')).expiresAt.getUTCFullYear();
+      const year = (await caerus.unitary('seat_A12').take()).expiresAt.getUTCFullYear();
 
       expect(year).toBeGreaterThan(2020);
       expect(year).toBeLessThan(2100);
@@ -229,7 +231,7 @@ describe('the business methods', () => {
         callback(null, aResourceResponse({ key: 'seat_A12', availableAmount: 5 })),
       );
 
-      const resource = await caerus.createResource('seat', 'seat_A12', 5, {
+      const resource = await caerus.createMultiple('seat', 'seat_A12', 5, {
         groupKey: 'row_A',
         metadata: { zone: 'platea' },
       });
@@ -247,7 +249,7 @@ describe('the business methods', () => {
     });
 
     it.each([0, -3])('refuses an amount of %s', async (amount) => {
-      await expect(caerus.createResource('seat', 'seat_A12', amount)).rejects.toBeInstanceOf(
+      await expect(caerus.createMultiple('seat', 'seat_A12', amount)).rejects.toBeInstanceOf(
         ValidationError,
       );
     });
@@ -324,15 +326,15 @@ describe('the business methods', () => {
       expect(engine.lastRequest.page).toBe(0);
     });
 
-    it('reads a reservation', async () => {
+    it('reads a holder', async () => {
       engine.on('getResourceHolder', (_call, callback) =>
         callback(null, aHolderResponse({ holderId: 'hld-7', status: 1 })),
       );
 
-      const reservation = await caerus.getReservation('hld-7');
+      const holder = await caerus.getResourceHolder('hld-7');
 
       expect(engine.lastRequest.resourceHolderId).toBe('hld-7');
-      expect(reservation.status).toBe('CONFIRMED');
+      expect(holder.status).toBe('CONFIRMED');
     });
   });
 
@@ -375,7 +377,7 @@ describe('the business methods', () => {
     it('arrives as a ConflictError carrying the engine message', async () => {
       engine.on('take', outOfStock as never);
 
-      const error = await caerus.take('seat_A12').catch((caught: unknown) => caught);
+      const error = await caerus.unitary('seat_A12').take().catch((caught: unknown) => caught);
 
       expect(error).toBeInstanceOf(ConflictError);
       expect((error as CaerusError).code).toBe('CONFLICT');
@@ -385,7 +387,7 @@ describe('the business methods', () => {
     it('is no longer an opaque internal error', async () => {
       engine.on('take', outOfStock as never);
 
-      const error = await caerus.take('seat_A12').catch((caught: unknown) => caught);
+      const error = await caerus.unitary('seat_A12').take().catch((caught: unknown) => caught);
 
       expect((error as CaerusError).code).not.toBe('UNKNOWN');
       expect((error as CaerusError).message).not.toBe('Unexpected gRPC error');
@@ -394,7 +396,7 @@ describe('the business methods', () => {
     it('reaches takeMany the same way', async () => {
       engine.on('take', outOfStock as never);
 
-      await expect(caerus.takeMany('general_admission', 4)).rejects.toBeInstanceOf(
+      await expect(caerus.pooled('general_admission').takeMany(4)).rejects.toBeInstanceOf(
         ConflictError,
       );
     });

@@ -22,11 +22,13 @@ export type {
   CreateResourceOptions,
   GetResourcesByGroupOptions,
   Metadata,
-  Reservation,
-  ReservationStatus,
+  PooledResource,
   Resource,
+  ResourceHolder,
+  ResourceHolderStatus,
   ResourcePage,
   TakeOptions,
+  UnitaryResource,
 } from './types.js';
 
 export {

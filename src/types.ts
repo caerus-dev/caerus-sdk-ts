@@ -1,5 +1,5 @@
 /**
- * Anything a caller can attach to a reservation or a resource.
+ * Anything a caller can attach to a holder or a resource.
  *
  * The wire carries this as a JSON string; the SDK takes and returns an object. Nobody
  * should have to call JSON.stringify to use a library.
@@ -7,22 +7,28 @@
 export type Metadata = Record<string, unknown>;
 
 /**
- * Where a reservation stands.
+ * Where a hold stands.
  *
  * `QUEUED` happens when the template resolves conflicts by queueing and there was no
  * stock: the engine parked the request and will settle it when something frees up. The
  * SDK does not wait for that — a call that hangs for an unbounded time is worse than a
  * status you can act on.
  */
-export type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'RELEASED' | 'FAILED' | 'QUEUED';
+export type ResourceHolderStatus = 'PENDING' | 'CONFIRMED' | 'RELEASED' | 'FAILED' | 'QUEUED';
 
-/** A hold on some amount of a resource. */
-export interface Reservation {
+/**
+ * A hold on some amount of a resource.
+ *
+ * Named after what the engine and the `.proto` call it. The word "reservation" is
+ * deliberately absent from this API: the project's domain language says *resource* and
+ * *resource holder*, and the SDK follows it.
+ */
+export interface ResourceHolder {
   /** Hand this back to confirm, release or extend. */
   id: string;
   /** The resource this came from. */
   resourceId: string;
-  status: ReservationStatus;
+  status: ResourceHolderStatus;
   /** How many units are held. */
   amount: number;
   /**
@@ -36,16 +42,16 @@ export interface Reservation {
   metadata?: Metadata;
 }
 
-/** Something with stock that reservations are taken from. */
+/** Something with stock that holders are taken from. */
 export interface Resource {
   id: string;
-  /** The name you gave it, and what you pass to take. */
+  /** The name you gave it, and what you pass to `unitary` or `pooled`. */
   key: string;
   /** The template it was created from. */
   templateId: string;
   /** Units free to be taken right now. */
   availableAmount: number;
-  /** Units currently held by reservations that are neither confirmed nor released. */
+  /** Units currently held by holders that are neither confirmed nor released. */
   pendingCount: number;
   groupKey?: string;
   metadata?: Metadata;
@@ -58,11 +64,11 @@ export interface ResourcePage {
   hasNextPage: boolean;
 }
 
-/** Extras for taking a reservation. */
+/** Extras for taking a holder. */
 export interface TakeOptions {
   /**
-   * Makes the take repeatable: sending the same key twice returns the first
-   * reservation instead of taking a second one.
+   * Makes the take repeatable: sending the same key twice returns the first holder
+   * instead of taking a second one.
    *
    * Some templates require it. It is also the only safe way to retry a take yourself,
    * since the SDK never retries one on its own.
@@ -82,9 +88,9 @@ export interface CreateResourceOptions {
   metadata?: Metadata;
 }
 
-/** Extras for confirming a reservation. */
+/** Extras for confirming a holder. */
 export interface ConfirmOptions {
-  /** Replaces the reservation's metadata as it is confirmed, for a payment id and such. */
+  /** Replaces the holder's metadata as it is confirmed, for a payment id and such. */
   metadata?: Metadata;
 }
 
@@ -93,4 +99,32 @@ export interface GetResourcesByGroupOptions {
   /** Zero-based. Defaults to the first page. */
   page?: number;
   pageSize?: number;
+}
+
+/**
+ * A resource that holds exactly one unit — a numbered seat, a specific room, a slot.
+ *
+ * There is no `takeMany` here, and that is the point: asking for three of something
+ * there is one of does not compile.
+ */
+export interface UnitaryResource {
+  /** The key this handle points at. */
+  readonly key: string;
+
+  /** Holds the unit. */
+  take(options?: TakeOptions): Promise<ResourceHolder>;
+}
+
+/**
+ * A resource that holds interchangeable units — general admission, licences, capacity.
+ */
+export interface PooledResource {
+  /** The key this handle points at. */
+  readonly key: string;
+
+  /** Holds one unit. */
+  take(options?: TakeOptions): Promise<ResourceHolder>;
+
+  /** Holds several at once. */
+  takeMany(amount: number, options?: TakeOptions): Promise<ResourceHolder>;
 }
