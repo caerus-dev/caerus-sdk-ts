@@ -1,12 +1,5 @@
 import type { SharedResourceApi } from './api.js';
-import {
-  CaerusError,
-  ConflictError,
-  OutOfStockError,
-  ResourceNotFoundError,
-  ValidationError,
-} from './errors.js';
-import { runReserve } from './internal/reserve-flow.js';
+import { CaerusError, ConflictError, ResourceNotFoundError, ValidationError } from './errors.js';
 import { DEFAULT_LOGGER, type CaerusLogger } from './options.js';
 import type {
   ConfirmOptions,
@@ -14,7 +7,6 @@ import type {
   GetResourcesByGroupOptions,
   Metadata,
   Reservation,
-  ReservationWork,
   Resource,
   ResourcePage,
   TakeOptions,
@@ -86,7 +78,8 @@ const DEFAULT_PAGE_SIZE = 25;
  *   resources: [{ key: 'seat_A12', availableAmount: 1 }],
  * });
  *
- * await caerus.reserve('seat_A12', async () => chargeCard());
+ * const holder = await caerus.take('seat_A12');
+ * await caerus.confirm(holder.id);
  * ```
  *
  * ## Time does not pass on its own
@@ -273,9 +266,9 @@ export class InMemoryCaerusClient implements SharedResourceApi {
     this.#giveBack(reservation, 'RELEASED');
   }
 
-  async extend(reservationId: string, extraSeconds: number): Promise<Reservation> {
+  async extend(reservationId: string, extraMs: number): Promise<Reservation> {
     this.#guard('extend');
-    requirePositive(extraSeconds, 'extraSeconds');
+    requirePositive(extraMs, 'extraMs');
     const reservation = this.#requireReservation(reservationId);
 
     if (reservation.status !== 'PENDING') {
@@ -284,25 +277,9 @@ export class InMemoryCaerusClient implements SharedResourceApi {
       );
     }
 
-    reservation.expiresAtSeconds += extraSeconds;
+    // Rounding up, the way the engine does: anything under a second buys one second.
+    reservation.expiresAtSeconds += Math.ceil(extraMs / 1000);
     return this.#toReservation(reservation);
-  }
-
-  async reserve<T>(
-    resourceKey: string,
-    work: ReservationWork<T>,
-    options: TakeOptions = {},
-  ): Promise<T> {
-    return this.#reserve(await this.take(resourceKey, options), work);
-  }
-
-  async reserveMany<T>(
-    resourceKey: string,
-    amount: number,
-    work: ReservationWork<T>,
-    options: TakeOptions = {},
-  ): Promise<T> {
-    return this.#reserve(await this.takeMany(resourceKey, amount, options), work);
   }
 
   async getResource(key: string): Promise<Resource> {
@@ -344,15 +321,6 @@ export class InMemoryCaerusClient implements SharedResourceApi {
 
   // --- Internals --------------------------------------------------------------------
 
-  #reserve<T>(reservation: Reservation, work: ReservationWork<T>): Promise<T> {
-    // The same orchestration the real client runs, so the mock cannot drift from it.
-    return runReserve(reservation, work, {
-      confirm: (id) => this.confirm(id),
-      release: (id) => this.release(id),
-      logger: this.#logger,
-    });
-  }
-
   #take(resourceKey: string, amount: number, options: TakeOptions): Reservation {
     requireText(resourceKey, 'resourceKey');
     if (options.ttlSeconds !== undefined) {
@@ -372,7 +340,7 @@ export class InMemoryCaerusClient implements SharedResourceApi {
     if (resource.availableAmount < amount) {
       // The same type and wording the engine produces. A mock that reported this
       // differently would teach a lesson that only breaks in production.
-      throw new OutOfStockError(`Out of stock for resource: ${resourceKey}`);
+      throw new ConflictError(`Out of stock for resource: ${resourceKey}`);
     }
 
     resource.availableAmount -= amount;

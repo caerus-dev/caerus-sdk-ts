@@ -7,7 +7,6 @@ import {
   toResource,
   toResourcePage,
 } from './internal/mapping.js';
-import { runReserve } from './internal/reserve-flow.js';
 import { Transport } from './internal/transport.js';
 import {
   resolveOptions,
@@ -20,7 +19,6 @@ import type {
   CreateResourceOptions,
   GetResourcesByGroupOptions,
   Reservation,
-  ReservationWork,
   Resource,
   ResourcePage,
   TakeOptions,
@@ -208,74 +206,26 @@ export class CaerusClient implements SharedResourceApi {
    * Pushes the expiry further out.
    *
    * ```typescript
-   * await caerus.extend(reservation.id, 300); // five more minutes
+   * await caerus.extend(holder.id, 300_000); // five more minutes
    * ```
    *
-   * Seconds, like every other duration here. Never retried automatically: a repeated
-   * extend adds the time twice and says nothing about it.
+   * **Milliseconds**, unlike `ttlSeconds` — that is what the contract asks for. The
+   * engine works in whole seconds and rounds up, so anything under 1000 buys exactly one
+   * second.
+   *
+   * Never retried automatically: a repeated extend adds the time twice and says nothing
+   * about it.
    */
-  async extend(reservationId: string, extraSeconds: number): Promise<Reservation> {
+  async extend(reservationId: string, extraMs: number): Promise<Reservation> {
     requireText(reservationId, 'reservationId');
-    requirePositive(extraSeconds, 'extraSeconds');
+    requirePositive(extraMs, 'extraMs');
 
     const response = await this.#transport.unary(
       this.#transport.raw.extend.bind(this.#transport.raw),
-      { resourceHolderId: reservationId, extraSeconds },
+      { resourceHolderId: reservationId, extraMs },
     );
 
     return assertUsable(toReservation(response));
-  }
-
-  // --- The whole cycle in one call -------------------------------------------------
-
-  /**
-   * Holds one unit, runs your work, and settles the reservation either way.
-   *
-   * ```typescript
-   * await caerus.reserve('seat_A12', async () => {
-   *   await chargeCard();
-   * });
-   * ```
-   *
-   * If your block returns, the reservation is confirmed. If it throws, the reservation
-   * is released and **your** error is what comes out — the release is bookkeeping, and
-   * replacing your error with one about bookkeeping would hide what actually happened.
-   *
-   * This exists because forgetting the release on the error path is the integration
-   * mistake everyone makes, and the stock stays held until the TTL runs out.
-   *
-   * Whatever your block returns is what this returns.
-   */
-  async reserve<T>(
-    resourceKey: string,
-    work: ReservationWork<T>,
-    options: TakeOptions = {},
-  ): Promise<T> {
-    return this.#reserve(await this.take(resourceKey, options), work);
-  }
-
-  /**
-   * The same, for several units at once.
-   *
-   * A second method rather than an optional amount, for the same reason `takeMany` is
-   * one: the SDKs coming for other languages have to look the same, and Go has no
-   * overloading. Someone who learned `take` and `takeMany` already knows this pair.
-   */
-  async reserveMany<T>(
-    resourceKey: string,
-    amount: number,
-    work: ReservationWork<T>,
-    options: TakeOptions = {},
-  ): Promise<T> {
-    return this.#reserve(await this.takeMany(resourceKey, amount, options), work);
-  }
-
-  async #reserve<T>(reservation: Reservation, work: ReservationWork<T>): Promise<T> {
-    return runReserve(reservation, work, {
-      confirm: (id) => this.confirm(id),
-      release: (id) => this.release(id),
-      logger: this.#logger,
-    });
   }
 
   // --- Queries -------------------------------------------------------------------

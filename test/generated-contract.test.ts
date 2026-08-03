@@ -31,14 +31,14 @@ describe('the client generated from sre_service.proto', () => {
   });
 
   /**
-   * The contract fix that had to land before this package existed: the field used to be
-   * extra_ms, and the engine rounded it up to whole seconds anyway, so extend(300) added
-   * one second instead of 300.
+   * Milliseconds, unlike `custom_ttl_seconds`. The engine rounds up to whole seconds, so
+   * anything under 1000 extends by exactly one — a quirk the SDK documents rather than
+   * papers over, since the contract is the team's to change.
    */
-  it('takes the extension in seconds', () => {
-    const request = ExtendRequest.fromPartial({ extraSeconds: 300 });
+  it('takes the extension in milliseconds', () => {
+    const request = ExtendRequest.fromPartial({ extraMs: 60_000 });
 
-    expect(request).toHaveProperty('extraSeconds', 300);
-    expect(request).not.toHaveProperty('extraMs');
+    expect(request).toHaveProperty('extraMs', 60_000);
+    expect(request).not.toHaveProperty('extraSeconds');
   });
 });
