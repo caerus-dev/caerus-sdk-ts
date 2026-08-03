@@ -3,6 +3,22 @@
   "version": "0.1.0",
   "description": "Caerus SDK for Node.js — Shared Resource Engine client",
   "license": "MIT",
+  "keywords": [
+    "caerus",
+    "concurrency",
+    "reservations",
+    "inventory",
+    "grpc",
+    "sdk"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/caerus-dev/caerus-sdk-ts.git"
+  },
+  "homepage": "https://github.com/caerus-dev/caerus-sdk-ts#readme",
+  "bugs": {
+    "url": "https://github.com/caerus-dev/caerus-sdk-ts/issues"
+  },
   "engines": {
     "node": ">=20"
   },
@@ -19,6 +35,9 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "generate": "npm run proto:generate && npm run version:generate",
     "proto:generate": "node scripts/generate-proto.mjs",
