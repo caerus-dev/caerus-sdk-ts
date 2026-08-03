@@ -3,7 +3,6 @@ import type {
   CreateResourceOptions,
   GetResourcesByGroupOptions,
   Reservation,
-  ReservationWork,
   Resource,
   ResourcePage,
   TakeOptions,
@@ -44,23 +43,8 @@ export interface SharedResourceApi {
   /** Gives the units back before the reservation lapses. */
   release(reservationId: string): Promise<void>;
 
-  /** Pushes the expiry further out, in seconds. */
-  extend(reservationId: string, extraSeconds: number): Promise<Reservation>;
-
-  /** Holds one unit, runs the work, and confirms or releases. */
-  reserve<T>(
-    resourceKey: string,
-    work: ReservationWork<T>,
-    options?: TakeOptions,
-  ): Promise<T>;
-
-  /** The same, for several units. */
-  reserveMany<T>(
-    resourceKey: string,
-    amount: number,
-    work: ReservationWork<T>,
-    options?: TakeOptions,
-  ): Promise<T>;
+  /** Pushes the expiry further out, in milliseconds. */
+  extend(reservationId: string, extraMs: number): Promise<Reservation>;
 
   /** Reads a resource and its current stock. */
   getResource(key: string): Promise<Resource>;

@@ -5,7 +5,6 @@ import {
   AuthenticationError,
   CaerusError,
   ConflictError,
-  OutOfStockError,
   ResourceNotFoundError,
   TimeoutError,
   ValidationError,
@@ -79,12 +78,11 @@ describe('the transport, against a real gRPC server', () => {
 
   /**
    * The table comes from the server's GrpcGlobalExceptionHandler, not from a generic
-   * gRPC convention: FAILED_PRECONDITION is what Caerus returns for an invalid state,
-   * and RESOURCE_EXHAUSTED specifically for running out of stock.
+   * gRPC convention: FAILED_PRECONDITION is what Caerus returns for any invalid state,
+   * running out of stock included.
    */
   it.each([
     [GrpcStatus.FAILED_PRECONDITION, ConflictError, 'CONFLICT'],
-    [GrpcStatus.RESOURCE_EXHAUSTED, OutOfStockError, 'OUT_OF_STOCK'],
     [GrpcStatus.INVALID_ARGUMENT, ValidationError, 'VALIDATION'],
     [GrpcStatus.UNAUTHENTICATED, AuthenticationError, 'AUTHENTICATION'],
   ])('maps status %i to the matching error', async (code, expected, expectedCode) => {

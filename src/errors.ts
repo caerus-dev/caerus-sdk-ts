@@ -10,7 +10,6 @@ import { status as GrpcStatus } from '@grpc/grpc-js';
 export type CaerusErrorCode =
   | 'RESOURCE_NOT_FOUND'
   | 'CONFLICT'
-  | 'OUT_OF_STOCK'
   | 'VALIDATION'
   | 'AUTHENTICATION'
   | 'TIMEOUT'
@@ -38,39 +37,16 @@ export class ResourceNotFoundError extends CaerusError {
 }
 
 /**
- * The operation does not fit the current state — confirming a reservation that was
- * already confirmed, releasing one that expired, and so on.
+ * The state does not allow the operation.
  *
- * {@link OutOfStockError} extends this, so catching `ConflictError` catches both "there
- * is none left" and "this reservation is in the wrong state".
+ * This covers running out of stock, and also confirming a holder that was already
+ * confirmed or releasing one that expired. The engine reports all of them as
+ * FAILED_PRECONDITION, so the SDK cannot tell them apart without reading the message
+ * text, which would break the first time the wording changes.
  */
 export class ConflictError extends CaerusError {
-  constructor(message: string, code: CaerusErrorCode = 'CONFLICT', options?: { cause?: unknown }) {
-    super(message, code, options);
-  }
-}
-
-/**
- * There is not enough left to hold.
- *
- * The answer this product exists to give, so it gets a type of its own. It extends
- * {@link ConflictError} on purpose: code that only cares about "I could not get it"
- * keeps working, and code that wants to say *sold out* rather than *something went
- * wrong* can ask.
- *
- * ```typescript
- * catch (error) {
- *   if (error instanceof OutOfStockError) return 'Sold out';
- *   if (error instanceof ConflictError) return 'Not available right now';
- * }
- * ```
- *
- * Note the order: `OutOfStockError` has to be checked first, being the more specific of
- * the two.
- */
-export class OutOfStockError extends ConflictError {
   constructor(message: string, options?: { cause?: unknown }) {
-    super(message, 'OUT_OF_STOCK', options);
+    super(message, 'CONFLICT', options);
   }
 }
 
@@ -122,10 +98,8 @@ export function toCaerusError(error: unknown): CaerusError {
   switch (grpcError?.code) {
     case GrpcStatus.NOT_FOUND:
       return new ResourceNotFoundError(message, options);
-    case GrpcStatus.RESOURCE_EXHAUSTED:
-      return new OutOfStockError(message, options);
     case GrpcStatus.FAILED_PRECONDITION:
-      return new ConflictError(message, 'CONFLICT', options);
+      return new ConflictError(message, options);
     case GrpcStatus.INVALID_ARGUMENT:
       return new ValidationError(message, options);
     case GrpcStatus.UNAUTHENTICATED:

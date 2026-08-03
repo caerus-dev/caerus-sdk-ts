@@ -9,7 +9,6 @@ import {
   CaerusClient,
   CaerusError,
   ConflictError,
-  OutOfStockError,
   ResourceNotFoundError,
   TimeoutError,
   ValidationError,
@@ -23,25 +22,24 @@ const caerus = new CaerusClient({
 declare function chargeCard(amount: number): Promise<{ paymentId: string }>;
 
 export async function buyWithGoodErrors(): Promise<string> {
+  const holder = await caerus.take('seat_A12');
+
   try {
-    return await caerus.reserve('seat_A12', async () => {
-      const { paymentId } = await chargeCard(4500);
-      return paymentId;
-    });
+    const { paymentId } = await chargeCard(4500);
+    await caerus.confirm(holder.id, { metadata: { paymentId } });
+    return paymentId;
   } catch (error) {
+    await caerus.release(holder.id);
+
     if (error instanceof ResourceNotFoundError) {
       // No resource with that key. Usually a typo or something never created.
       throw new Error('That seat does not exist');
     }
 
-    // Before ConflictError, which it extends. The other way round this branch would
-    // never run.
-    if (error instanceof OutOfStockError) {
-      throw new Error('That seat is sold out');
-    }
-
     if (error instanceof ConflictError) {
-      // Some other invalid state: a reservation already confirmed, one that expired.
+      // Careful: this is also what a sold-out seat looks like. The engine reports "no
+      // stock" and "this holder is in the wrong state" with the same code, so the two
+      // cannot be told apart without reading the message. See the README.
       throw new Error('That seat is no longer available');
     }
 
@@ -64,8 +62,7 @@ export async function buyWithGoodErrors(): Promise<string> {
       throw new Error(`Caerus failed: ${error.message}`);
     }
 
-    // Not a Caerus error at all — this is chargeCard's. reserve released the seat and
-    // handed the original error back untouched.
+    // Not a Caerus error at all — this is chargeCard's. The seat was released above.
     throw error;
   }
 }
@@ -83,10 +80,6 @@ export async function describeFailure(): Promise<string> {
     switch (error.code) {
       case 'RESOURCE_NOT_FOUND':
         return 'no such seat';
-      // OUT_OF_STOCK is its own code, so switching on `code` needs both branches even
-      // though OutOfStockError extends ConflictError.
-      case 'OUT_OF_STOCK':
-        return 'sold out';
       case 'CONFLICT':
         return 'unavailable';
       case 'TIMEOUT':

@@ -2,12 +2,7 @@ import { status as GrpcStatus } from '@grpc/grpc-js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { CaerusClient } from '../src/client.js';
-import {
-  CaerusError,
-  ConflictError,
-  OutOfStockError,
-  ValidationError,
-} from '../src/errors.js';
+import { CaerusError, ConflictError, ValidationError } from '../src/errors.js';
 import {
   aHolderResponse,
   aResourceResponse,
@@ -280,14 +275,14 @@ describe('the business methods', () => {
   });
 
   describe('extend', () => {
-    /** Seconds, after the contract fix. Sending 300 used to add one second. */
-    it('sends the extension in seconds', async () => {
-      await caerus.extend('hld-1', 300);
+    /** Milliseconds, which is what the contract asks for — unlike ttlSeconds. */
+    it('sends the extension in milliseconds', async () => {
+      await caerus.extend('hld-1', 300_000);
 
-      expect(engine.lastRequest).toMatchObject({ resourceHolderId: 'hld-1', extraSeconds: 300 });
+      expect(engine.lastRequest).toMatchObject({ resourceHolderId: 'hld-1', extraMs: 300_000 });
     });
 
-    it.each([0, -30])('refuses %s seconds without calling', async (seconds) => {
+    it.each([0, -30])('refuses %s without calling', async (seconds) => {
       engine.on('extend', () => {
         throw new Error('should not have been called');
       });
@@ -359,47 +354,32 @@ describe('the business methods', () => {
   });
 
   /**
-   * Found by running the SDK against a real engine: OutOfStockException had no handler
-   * in GrpcGlobalExceptionHandler, so the most important answer this product gives —
-   * "there is none left" — reached the client as INTERNAL "Unexpected gRPC error".
+   * Found by running the SDK against a real engine: OutOfStockException extended
+   * RuntimeException, so no handler caught it and the most important answer this product
+   * gives — "there is none left" — reached the client as INTERNAL "Unexpected gRPC
+   * error", with nothing to act on.
    *
-   * The engine now answers RESOURCE_EXHAUSTED, and this is the SDK side of that.
+   * It now extends IllegalStateException, so the engine answers FAILED_PRECONDITION.
+   * That makes it a ConflictError here, indistinguishable from any other invalid state —
+   * a known limitation, and still far better than an opaque internal failure.
    */
   describe('running out of stock', () => {
     function outOfStock(_call: unknown, callback: (error: unknown) => void): void {
       callback({
-        code: GrpcStatus.RESOURCE_EXHAUSTED,
+        code: GrpcStatus.FAILED_PRECONDITION,
         details: 'Out of stock for resource: seat_A12',
         metadata: undefined,
       });
     }
 
-    it('arrives as OutOfStockError', async () => {
-      engine.on('take', outOfStock as never);
-
-      const error = await caerus.take('seat_A12').catch((caught: unknown) => caught);
-
-      expect(error).toBeInstanceOf(OutOfStockError);
-      expect((error as CaerusError).code).toBe('OUT_OF_STOCK');
-      expect((error as CaerusError).message).toBe('Out of stock for resource: seat_A12');
-    });
-
-    /** Additive by design: code that only knew about ConflictError keeps working. */
-    it('is still a ConflictError', async () => {
+    it('arrives as a ConflictError carrying the engine message', async () => {
       engine.on('take', outOfStock as never);
 
       const error = await caerus.take('seat_A12').catch((caught: unknown) => caught);
 
       expect(error).toBeInstanceOf(ConflictError);
-      expect(error).toBeInstanceOf(CaerusError);
-    });
-
-    it('reaches takeMany the same way', async () => {
-      engine.on('take', outOfStock as never);
-
-      await expect(caerus.takeMany('general_admission', 4)).rejects.toBeInstanceOf(
-        OutOfStockError,
-      );
+      expect((error as CaerusError).code).toBe('CONFLICT');
+      expect((error as CaerusError).message).toBe('Out of stock for resource: seat_A12');
     });
 
     it('is no longer an opaque internal error', async () => {
@@ -409,6 +389,14 @@ describe('the business methods', () => {
 
       expect((error as CaerusError).code).not.toBe('UNKNOWN');
       expect((error as CaerusError).message).not.toBe('Unexpected gRPC error');
+    });
+
+    it('reaches takeMany the same way', async () => {
+      engine.on('take', outOfStock as never);
+
+      await expect(caerus.takeMany('general_admission', 4)).rejects.toBeInstanceOf(
+        ConflictError,
+      );
     });
   });
 });

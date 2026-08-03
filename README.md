@@ -4,13 +4,14 @@ The Caerus client for Node.js. Reserve limited stock — seats, slots, inventory
 writing the concurrency logic that keeps two customers from buying the same thing.
 
 ```typescript
-await caerus.reserve('seat_A12', async () => {
-  await chargeCard(4500);
-});
+const holder = await caerus.take('seat_A12');
+await chargeCard(4500);
+await caerus.confirm(holder.id);
 ```
 
-That call holds the seat, runs your payment, and then either confirms the reservation or
-puts the seat back on sale. You never write the rollback.
+The seat is held while the payment runs, and taken for good once it settles. If anything
+goes wrong, `release` puts it straight back on sale — and if your process dies before it
+can, the hold expires on its own.
 
 ---
 
@@ -87,55 +88,23 @@ for (const number of [1, 2, 3, 4]) {
 }
 
 // Every time somebody buys.
-const ticket = await caerus.reserve('seat_A1', async (reservation) => {
+const holder = await caerus.take('seat_A1', { ttlSeconds: 120 });
+
+try {
   const { paymentId } = await chargeCard(4500);
-  return issueTicket(paymentId, reservation.id);
-});
+  await caerus.confirm(holder.id, { metadata: { paymentId } });
+} catch (error) {
+  await caerus.release(holder.id);   // straight back on sale
+  throw error;
+}
 
 // seat_A1 is now confirmed and off the market.
 const row = await caerus.getResourcesByGroup('row_A');
 console.log(row.resources.filter((seat) => seat.availableAmount > 0).length);  // 3
 ```
 
-If `chargeCard` throws, `seat_A1` is released before the error reaches you, and the error
-you get is the one `chargeCard` threw — not one about reservations.
-
----
-
-## `reserve` — the whole cycle in one call
-
-```typescript
-reserve(resourceKey, work, options?)
-reserveMany(resourceKey, amount, work, options?)
-```
-
-- Your work returns → the reservation is **confirmed**
-- Your work throws → the reservation is **released**, and your error is re-thrown untouched
-- `reserve` returns whatever your work returned
-
-This exists because forgetting the release on the error path is the mistake everyone
-makes, and the stock stays held until the hold expires.
-
-```typescript
-const ticketId = await caerus.reserve(
-  'seat_A12',
-  async (reservation) => {
-    console.log(`held until ${reservation.expiresAt.toISOString()}`);
-    return issueTicket();
-  },
-  { ttlSeconds: 120, metadata: { orderId: 'ord_1234' } },
-);
-```
-
-**If the release also fails**, your error still comes out; the failed release goes to the
-logger. The units lapse on their own anyway.
-
-**If the reservation comes back queued**, `reserve` throws without running your work: a
-queued reservation is not holding anything yet, and running your payment against it would
-charge a card for a seat the customer does not have. Use `take` if you want to handle
-queueing yourself.
-
-More in `examples/01-reserve.ts`, in the repository.
+**Release on every path that abandons a checkout.** Without it the seat stays held until
+its TTL runs out — correct, but minutes of stock nobody can buy.
 
 ---
 
@@ -148,7 +117,7 @@ take(resourceKey, options?)             // hold one unit
 takeMany(resourceKey, amount, options?) // hold several
 confirm(reservationId, options?)        // settle it: the units stay taken
 release(reservationId)                  // give them back early
-extend(reservationId, extraSeconds)     // push the expiry out
+extend(reservationId, extraMs)          // push the expiry out
 getReservation(reservationId)           // read it as it stands
 ```
 
@@ -160,9 +129,10 @@ getReservation(reservationId)           // read it as it stands
 | `ttlSeconds` | Overrides the template's hold time |
 | `metadata` | An object of your own that travels with the reservation |
 
-Use these when a hold has to outlive a single function — taken on one HTTP request,
-confirmed on another. Everywhere else `reserve` is less code and cannot forget the
-release.
+> ⚠️ **`extend` takes milliseconds, `ttlSeconds` takes seconds.** That mismatch is in the
+> contract, not something this SDK invented, so it is passed through rather than papered
+> over. The engine works in whole seconds and rounds up: anything under 1000 buys exactly
+> one second.
 
 More in `examples/02-manual-lifecycle.ts`, in the repository.
 
@@ -217,32 +187,21 @@ message the engine sent.
 | Error | `code` | When |
 |---|---|---|
 | `ResourceNotFoundError` | `RESOURCE_NOT_FOUND` | No such resource, template or reservation |
-| `OutOfStockError` | `OUT_OF_STOCK` | There is not enough left to hold |
-| `ConflictError` | `CONFLICT` | Some other invalid state: already confirmed, already expired |
+| `ConflictError` | `CONFLICT` | The state does not allow it — **including no stock** |
 | `ValidationError` | `VALIDATION` | The request was rejected |
 | `AuthenticationError` | `AUTHENTICATION` | API Key missing, unknown or revoked |
 | `TimeoutError` | `TIMEOUT` | The call ran past its deadline |
 | `CaerusError` | `UNKNOWN` | Anything else |
 
-**`OutOfStockError` extends `ConflictError`**, so code that only cares about "I could not
-get it" needs one branch, and code that wants to say *sold out* can have its own:
-
 ```typescript
 try {
   await caerus.take('seat_A12');
 } catch (error) {
-  // The specific one first — the other way round this never runs.
-  if (error instanceof OutOfStockError) {
-    return 'Sold out';
-  }
   if (error instanceof ConflictError) {
-    return 'Not available right now';
+    // Sold out, or the holder was in the wrong state — see Known limitations
   }
 }
 ```
-
-Switching on `code` instead of the class needs both cases spelled out: `OUT_OF_STOCK`
-does not also match `CONFLICT`.
 
 More in `examples/04-errors.ts`, in the repository.
 
@@ -259,7 +218,9 @@ import { InMemoryCaerusClient, type SharedResourceApi } from '@caerus-dev/sdk';
 
 // Take the interface, not the class.
 async function buySeat(caerus: SharedResourceApi, seat: string) {
-  return caerus.reserve(seat, () => chargeCard(4500));
+  const holder = await caerus.take(seat);
+  await chargeCard(4500);
+  await caerus.confirm(holder.id);
 }
 
 const caerus = new InMemoryCaerusClient({
@@ -310,27 +271,34 @@ same seat, an SDK that could cause that would contradict the product.
 **What it does instead:** every call has a deadline, and `idempotencyKey` lets you retry
 a `take` safely yourself. Read-only calls are harmless and may be retried freely.
 
-### A slow block can outlive its own reservation
+### "Sold out" arrives as a generic conflict
 
-If the work you pass to `reserve` takes longer than the hold, the reservation expires
-while your work is still running, and the `confirm` afterwards fails. Your work already
-happened — the payment went through — but the seat went back on sale in the middle.
+The engine reports no-stock and every other invalid state with the same code, so both
+become `ConflictError`. Telling them apart means reading the message text, which will
+break the first time the wording changes.
+
+**In the meantime:** check the stock with `getResource` before deciding what to tell your
+customer, rather than parsing the message.
+
+### Slow work can outlive its own hold
+
+If whatever you do between `take` and `confirm` takes longer than the hold, the
+reservation expires while you are still working and the `confirm` afterwards fails. Your
+work already happened — the payment went through — but the seat went back on sale in the
+middle.
 
 This is correct behaviour and still a surprise. It is a real risk with slow payment
 providers and short hold times.
 
 **Avoid it by** setting `ttlSeconds` above your payment provider's worst case, not its
-average.
-
-`reserve` also puts **no time limit on your block**. The deadline covers calls to Caerus,
-not what happens between them; interrupting your logic is not the SDK's business.
+average, and by calling `extend` when you are about to run out.
 
 ### The in-memory client is not the engine
 
 It is faithful to how we understand Caerus, which is not the same as being faithful to
 Caerus. Specifically:
 
-- **`QUEUED` is not simulated.** Out of stock always throws `OutOfStockError`, like the
+- **`QUEUED` is not simulated.** Out of stock always throws `ConflictError`, like the
   `FAIL` strategy. Templates that queue cannot be exercised against it
 - **Template rules are not enforced.** A single-unit template requiring exactly 1, or a
   template that rejects metadata, will be accepted here and refused by the engine

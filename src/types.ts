@@ -58,14 +58,6 @@ export interface ResourcePage {
   hasNextPage: boolean;
 }
 
-/**
- * The work to run while the units are held.
- *
- * Whatever it returns becomes the result of `reserve`. If it throws, the reservation is
- * released and the same error comes back out.
- */
-export type ReservationWork<T> = (reservation: Reservation) => T | Promise<T>;
-
 /** Extras for taking a reservation. */
 export interface TakeOptions {
   /**

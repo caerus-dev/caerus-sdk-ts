@@ -5,7 +5,7 @@
  * cannot tell them apart. It keeps real stock: a test that reserves more than exists
  * fails here the way it would in production.
  */
-import { InMemoryCaerusClient, OutOfStockError, type SharedResourceApi } from '@caerus-dev/sdk';
+import { ConflictError, InMemoryCaerusClient, type SharedResourceApi } from '@caerus-dev/sdk';
 
 declare function chargeCard(amount: number): Promise<{ paymentId: string }>;
 
@@ -14,10 +14,16 @@ declare function chargeCard(amount: number): Promise<{ paymentId: string }>;
  * client, tests pass the in-memory one, and this function never knows.
  */
 export async function buySeat(caerus: SharedResourceApi, seat: string): Promise<string> {
-  return caerus.reserve(seat, async () => {
+  const holder = await caerus.take(seat);
+
+  try {
     const { paymentId } = await chargeCard(4500);
+    await caerus.confirm(holder.id, { metadata: { paymentId } });
     return paymentId;
-  });
+  } catch (error) {
+    await caerus.release(holder.id);
+    throw error;
+  }
 }
 
 export function aTestEngine(): InMemoryCaerusClient {
@@ -49,7 +55,7 @@ export async function testSoldOut(): Promise<void> {
 
   await buySeat(caerus, 'seat_A12').then(
     () => console.assert(false, 'should have failed'),
-    (error: unknown) => console.assert(error instanceof OutOfStockError),
+    (error: unknown) => console.assert(error instanceof ConflictError),
   );
 }
 
@@ -60,11 +66,8 @@ export async function testSoldOut(): Promise<void> {
 export async function testPaymentFails(): Promise<void> {
   const caerus = aTestEngine();
 
-  await caerus
-    .reserve('seat_A12', () => {
-      throw new Error('card declined');
-    })
-    .catch(() => undefined);
+  caerus.failNext('confirm', new ConflictError('confirm exploded'));
+  await buySeat(caerus, 'seat_A12').catch(() => undefined);
 
   const seat = await caerus.getResource('seat_A12');
   console.assert(seat.availableAmount === 1, 'the seat should be back on sale');
@@ -95,10 +98,10 @@ export async function testExpiry(): Promise<void> {
 export async function testEngineMisbehaving(): Promise<void> {
   const caerus = aTestEngine();
 
-  caerus.failNext('take', new OutOfStockError('Out of stock for resource: seat_A12'));
+  caerus.failNext('take', new ConflictError('Out of stock for resource: seat_A12'));
 
   await buySeat(caerus, 'seat_A12').then(
     () => console.assert(false, 'should have failed'),
-    (error: unknown) => console.assert(error instanceof OutOfStockError),
+    (error: unknown) => console.assert(error instanceof ConflictError),
   );
 }

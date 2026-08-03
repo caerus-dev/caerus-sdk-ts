@@ -1,12 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import type { SharedResourceApi } from '../src/api.js';
-import {
-  ConflictError,
-  OutOfStockError,
-  ResourceNotFoundError,
-  ValidationError,
-} from '../src/errors.js';
+import { ConflictError, ResourceNotFoundError, ValidationError } from '../src/errors.js';
 import { InMemoryCaerusClient } from '../src/mock.js';
 
 function aMock(availableAmount = 1) {
@@ -19,7 +14,9 @@ describe('the in-memory client', () => {
   /** The point of the whole thing: code written against the API takes either one. */
   it('is usable wherever the real client is', async () => {
     async function checkout(caerus: SharedResourceApi): Promise<string> {
-      return caerus.reserve('seat_A12', (reservation) => reservation.id);
+      const holder = await caerus.take('seat_A12');
+      await caerus.confirm(holder.id);
+      return holder.id;
     }
 
     expect(await checkout(aMock())).toMatch(/^hld-/);
@@ -69,13 +66,13 @@ describe('the in-memory client', () => {
 
       await caerus.take('seat_A12');
 
-      await expect(caerus.take('seat_A12')).rejects.toBeInstanceOf(OutOfStockError);
+      await expect(caerus.take('seat_A12')).rejects.toBeInstanceOf(ConflictError);
     });
 
     /**
-     * The engine answers RESOURCE_EXHAUSTED for this, which the SDK turns into
-     * OutOfStockError. The mock has to produce the same thing, or a test suite that
-     * passes here would still break against Caerus.
+     * The engine answers FAILED_PRECONDITION for this, which the SDK turns into
+     * ConflictError. The mock has to produce the same thing, wording included, or a test
+     * suite that passes here would still break against Caerus.
      */
     it('reports it as the engine does, down to the error type', async () => {
       const caerus = aMock(1);
@@ -83,16 +80,15 @@ describe('the in-memory client', () => {
 
       const error = await caerus.take('seat_A12').catch((caught: unknown) => caught);
 
-      expect(error).toBeInstanceOf(OutOfStockError);
       expect(error).toBeInstanceOf(ConflictError);
-      expect((error as OutOfStockError).code).toBe('OUT_OF_STOCK');
-      expect((error as OutOfStockError).message).toBe('Out of stock for resource: seat_A12');
+      expect((error as ConflictError).code).toBe('CONFLICT');
+      expect((error as ConflictError).message).toBe('Out of stock for resource: seat_A12');
     });
 
     it('applies the same rule to takeMany', async () => {
       const caerus = aMock(3);
 
-      await expect(caerus.takeMany('seat_A12', 4)).rejects.toBeInstanceOf(OutOfStockError);
+      await expect(caerus.takeMany('seat_A12', 4)).rejects.toBeInstanceOf(ConflictError);
     });
 
     it('does not know about resources nobody created', async () => {
@@ -187,15 +183,25 @@ describe('the in-memory client', () => {
       await expect(caerus.confirm(reservation.id)).rejects.toBeInstanceOf(ConflictError);
     });
 
-    it('extends the expiry by the seconds it is given', async () => {
+    /** Milliseconds in, whole seconds applied, rounding up — the way the engine does it. */
+    it('extends the expiry by the milliseconds it is given', async () => {
       const caerus = aMock();
 
       const taken = await caerus.take('seat_A12', { ttlSeconds: 300 });
-      const extended = await caerus.extend(taken.id, 300);
+      const extended = await caerus.extend(taken.id, 300_000);
       caerus.advanceTime(301);
 
       expect(extended.expiresAt.getTime() - taken.expiresAt.getTime()).toBe(300_000);
       expect((await caerus.getReservation(taken.id)).status).toBe('PENDING');
+    });
+
+    it('rounds a sub-second extension up to one second', async () => {
+      const caerus = aMock();
+
+      const taken = await caerus.take('seat_A12', { ttlSeconds: 300 });
+      const extended = await caerus.extend(taken.id, 300);
+
+      expect(extended.expiresAt.getTime() - taken.expiresAt.getTime()).toBe(1_000);
     });
 
     it('refuses a negative jump', () => {
@@ -208,7 +214,7 @@ describe('the in-memory client', () => {
   describe('forced failures', () => {
     it('fails the next call to the named method', async () => {
       const caerus = aMock();
-      caerus.failNext('take', new OutOfStockError('Out of stock for resource: seat_A12'));
+      caerus.failNext('take', new ConflictError('Out of stock for resource: seat_A12'));
 
       await expect(caerus.take('seat_A12')).rejects.toThrow('Out of stock');
       // and only that one
@@ -234,51 +240,27 @@ describe('the in-memory client', () => {
     });
 
     /**
-     * The reason this control exists: letting a user drive reserve() down its error path
-     * without needing a broken server.
+     * The reason this control exists: letting a caller drive their own error path —
+     * a release that does not land — without needing a broken server.
      */
-    it('lets a caller exercise the release path of reserve', async () => {
+    it('lets a caller exercise a release that fails', async () => {
       const caerus = aMock();
-      const boom = new Error('card declined');
-
-      await expect(
-        caerus.reserve('seat_A12', () => {
-          throw boom;
-        }),
-      ).rejects.toBe(boom);
-
-      // released, so the stock is back
-      expect(await caerus.getResource('seat_A12')).toMatchObject({ availableAmount: 1 });
-    });
-
-    it('lets a caller exercise a release that itself fails', async () => {
-      const logged = vi.fn();
-      const caerus = new InMemoryCaerusClient({
-        resources: [{ key: 'seat_A12', availableAmount: 1 }],
-        logger: { error: logged },
-      });
-      const boom = new Error('card declined');
+      const holder = await caerus.take('seat_A12');
       caerus.failNext('release', new ConflictError('release exploded'));
 
-      await expect(
-        caerus.reserve('seat_A12', () => {
-          throw boom;
-        }),
-      ).rejects.toBe(boom);
-
-      expect(logged).toHaveBeenCalledOnce();
+      await expect(caerus.release(holder.id)).rejects.toThrow('release exploded');
     });
   });
 
   // --- The same behaviour as the real client ---------------------------------------
 
   describe('behaves like the real client', () => {
-    it('confirms after successful work and returns its value', async () => {
+    it('keeps the units taken after a confirm', async () => {
       const caerus = aMock();
 
-      const result = await caerus.reserve('seat_A12', async () => 'ticket-1');
+      const holder = await caerus.take('seat_A12');
+      await caerus.confirm(holder.id);
 
-      expect(result).toBe('ticket-1');
       expect(await caerus.getResource('seat_A12')).toMatchObject({
         availableAmount: 0,
         pendingCount: 0,
