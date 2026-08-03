@@ -94,6 +94,27 @@ red. Si necesitás probar el vencimiento o un timeout, hacelo contra un motor re
 `close()` suelta la conexión. En un proceso de vida corta conviene llamarlo; si no, el
 proceso puede quedar colgado esperando que el socket se cierre.
 
+## El SDK no lee variables de entorno
+
+No hay un endpoint por defecto horneado adentro, y el SDK tampoco mira `process.env`.
+Todo lo que necesita se lo pasás vos:
+
+```typescript
+const caerus = new CaerusClient({
+  endpoint: process.env.CAERUS_GRPC_URL,
+  apiKey: process.env.CAERUS_API_KEY,
+  tls: process.env.CAERUS_TLS !== 'false',
+});
+```
+
+Es una línea más y vale la pena por tres razones. Los nombres de las variables pasarían
+a ser API pública, y no se podrían renombrar sin romperle la configuración a todo el
+mundo. Una variable suelta en un CI cambiaría el comportamiento de los tests sin que
+nadie lo haya escrito en ningún lado. Y las convenciones de entorno difieren entre
+lenguajes, mientras que la idea es que los cuatro SDKs se parezcan.
+
+Que la configuración venga del entorno está bien; que la lea el SDK a tus espaldas, no.
+
 ## Lo que se genera y no se commitea
 
 `src/generated/` y `src/version.ts` se producen antes de cada build y de cada corrida de

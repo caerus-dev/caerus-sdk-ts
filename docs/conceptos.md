@@ -112,11 +112,23 @@ const page = await caerus.getResourcesByGroup('funcion-882');
 
 `getResource` le pregunta al motor, que responde desde Redis y está siempre al día.
 `getResourcesByGroup` va derecho a PostgreSQL, que se sincroniza de forma asincrónica.
-Un recurso recién creado puede tardar un momento en aparecer en la consulta por grupo.
+
+Medido contra un motor local sin carga: un recurso recién creado tarda unos **120 ms**
+en aparecer en la consulta por grupo, y después de tomar unidades la consulta sigue
+informando el stock viejo durante esa misma ventana. Es el relay del outbox de Redis,
+que corre cada 200 ms. Bajo carga puede ser más.
 
 No es un defecto, es cómo está construido el motor: Redis responde, PostgreSQL se pone
-al día después. Pero si escribís un test que crea un recurso y acto seguido lo busca por
-grupo, te va a fallar de manera intermitente. Reintentá con un límite de tiempo.
+al día después.
+
+**Y no puede causar una sobreventa**, que es lo que importa. `take` es atómico en Redis:
+si dos personas piden la última unidad, una falla, sin importar lo que dijera cualquier
+lectura previa. Las lecturas son informativas, no autorizan nada. Mostrar "quedan 40"
+cuando quedan 39 durante 120 ms es un problema cosmético; tomar es lo que decide.
+
+Donde sí muerde es en los tests. Si escribís uno que crea un recurso y acto seguido lo
+busca por grupo, o que toma unidades y compara las dos consultas, te va a fallar de
+manera intermitente. Reintentá con un límite de tiempo en lugar de consultar una vez.
 
 ## Metadata
 
