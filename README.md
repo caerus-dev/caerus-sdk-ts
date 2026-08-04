@@ -43,19 +43,49 @@ Node 20 or newer. TypeScript types are included; JavaScript works too.
 import { CaerusClient } from '@caerus-dev/sdk';
 
 const caerus = new CaerusClient({
-  endpoint: 'REPLACE_ME.caerus.example:9090',
+  endpoint: process.env.CAERUS_ENDPOINT!,   // "host:puerto" — see below
   apiKey: process.env.CAERUS_API_KEY!,
 });
 ```
 
-> ⚠️ **`REPLACE_ME.caerus.example:9090` is a placeholder.** Ask your Caerus contact for
-> the address of your engine. There is deliberately no default: a wrong one baked into
-> this package would reach you as a connection error with nothing to suggest it was
-> never meant to work.
+### What goes in `endpoint`
+
+**A host and a port, separated by a colon. Nothing else.**
+
+```
+engine.tu-caerus.com:9090     ✓
+localhost:9090                ✓  a local engine
+
+https://engine.tu-caerus.com  ✗  no scheme
+engine.tu-caerus.com          ✗  no port
+localhost:9090/sre            ✗  no path
+```
+
+It is not a URL, and that trips people up. Caerus speaks gRPC, not HTTP, so there is no
+`https://` and no path — just the address of the machine and the port it listens on.
+
+**Where to get it.** Running Caerus yourself, it is the address of the data plane; in a
+local setup, `localhost:9090`. Using someone else's, ask them: it is not something you
+can guess, and it is not on the dashboard.
+
+There is deliberately **no default**. One baked into this package would reach you as a
+connection error with nothing to suggest it was never meant to work.
+
+**A local engine listens in plaintext**, so pair it with `tls: false`. Forget that and
+the failure is a bare OpenSSL message about a wrong version number, which says nothing
+about what is actually wrong.
+
+```typescript
+const caerus = new CaerusClient({
+  endpoint: 'localhost:9090',
+  apiKey: process.env.CAERUS_API_KEY!,
+  tls: false,
+});
+```
 
 | Option | Default | What it does |
 |---|---|---|
-| `endpoint` | — | Host and port of the engine. Required |
+| `endpoint` | — | `host:puerto` of the engine, no scheme and no path. Required |
 | `apiKey` | — | From the Caerus dashboard. Required. Identifies your environment too |
 | `tls` | `true` | Encrypts the connection. Turn off only against a local engine |
 | `timeoutMs` | `10000` | Deadline on every call |
