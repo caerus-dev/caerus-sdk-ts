@@ -14,13 +14,11 @@ export interface CaerusLogger {
 /** How to reach Caerus. */
 export interface CaerusClientOptions {
   /**
-   * Host and port of the Caerus engine, for example `caerus.example.com:9090`.
+   * Host and port of the Caerus engine, for example `api.caerus.dev:443`.
    *
-   * There is deliberately no default. A wrong address baked into a published package
-   * would reach whoever installed it as a connection error with nothing to suggest it
-   * was a placeholder.
+   * Optional. Defaults to `api.caerus.dev:443` (or `process.env.CAERUS_ENDPOINT` if set).
    */
-  endpoint: string;
+  endpoint?: string;
 
   /**
    * The API Key from the Caerus dashboard.
@@ -59,6 +57,7 @@ export interface CaerusClientOptions {
   logger?: CaerusLogger;
 }
 
+export const DEFAULT_ENDPOINT = 'api.caerus.dev:443';
 export const DEFAULT_TIMEOUT_MS = 10_000;
 
 /** Prefixed so a line from the SDK is recognisable in someone else's log. */
@@ -76,23 +75,27 @@ export interface ResolvedClientOptions {
 }
 
 /**
- * Fails at construction rather than on the first call. A missing endpoint or key is a
+ * Fails at construction rather than on the first call. A missing key is a
  * wiring mistake, and it should surface where it was made.
  */
 export function resolveOptions(options: CaerusClientOptions): ResolvedClientOptions {
   if (!options || typeof options !== 'object') {
-    throw new TypeError('CaerusClient requires an options object with endpoint and apiKey');
-  }
-
-  const endpoint = typeof options.endpoint === 'string' ? options.endpoint.trim() : '';
-  if (!endpoint) {
-    throw new TypeError('CaerusClient requires an endpoint, for example "caerus.example.com:9090"');
+    throw new TypeError('CaerusClient requires an options object with an apiKey');
   }
 
   const apiKey = typeof options.apiKey === 'string' ? options.apiKey.trim() : '';
   if (!apiKey) {
     throw new TypeError('CaerusClient requires an apiKey. Create one in the Caerus dashboard');
   }
+
+  const envEndpoint = typeof process !== 'undefined' ? process.env?.CAERUS_ENDPOINT : undefined;
+  const rawEndpoint = typeof options.endpoint === 'string' ? options.endpoint.trim() : '';
+  const endpoint = rawEndpoint || (envEndpoint ? envEndpoint.trim() : '') || DEFAULT_ENDPOINT;
+
+  const envTls =
+    typeof process !== 'undefined' && process.env?.CAERUS_TLS !== undefined
+      ? process.env.CAERUS_TLS === 'true' || process.env.CAERUS_TLS === '1'
+      : undefined;
 
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
@@ -107,7 +110,7 @@ export function resolveOptions(options: CaerusClientOptions): ResolvedClientOpti
   return {
     endpoint,
     apiKey,
-    tls: options.tls ?? true,
+    tls: options.tls ?? envTls ?? true,
     timeoutMs,
     logger,
   };
