@@ -7,6 +7,7 @@ import type {
   ResourceHolder,
   ResourcePage,
   UnitaryResource,
+  UpdateResourceOptions,
 } from './types.js';
 
 /**
@@ -43,6 +44,16 @@ export interface SharedResourceApi {
     availableAmount: number,
     options?: CreateResourceOptions,
   ): Promise<Resource>;
+
+  /** Adjusts the stock of an existing resource by a delta (positive or negative). */
+  updateResource(
+    key: string,
+    deltaAmount: number,
+    options?: UpdateResourceOptions,
+  ): Promise<Resource>;
+
+  /** Removes a resource. Fails if it has active (pending) holders. */
+  deleteResource(key: string): Promise<void>;
 
   // --- Handles --------------------------------------------------------------------
 

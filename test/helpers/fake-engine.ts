@@ -22,6 +22,8 @@ import {
 
 export type EngineMethod =
   | 'createResource'
+  | 'updateResource'
+  | 'deleteResource'
   | 'take'
   | 'confirm'
   | 'release'
@@ -83,6 +85,8 @@ export function aHolderResponse(
 
 const METHODS: EngineMethod[] = [
   'createResource',
+  'updateResource',
+  'deleteResource',
   'take',
   'confirm',
   'release',
@@ -167,6 +171,7 @@ export async function startFakeEngine(): Promise<FakeEngine> {
 function defaultResponseFor(method: EngineMethod): unknown {
   switch (method) {
     case 'createResource':
+    case 'updateResource':
     case 'getResource':
       return aResourceResponse();
     case 'take':
@@ -177,6 +182,7 @@ function defaultResponseFor(method: EngineMethod): unknown {
     case 'getResourcesByGroupKey':
       return { resources: [aResourceResponse()], nextPage: false };
     case 'release':
+    case 'deleteResource':
       return {};
   }
 }

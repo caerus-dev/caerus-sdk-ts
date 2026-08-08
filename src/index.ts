@@ -29,6 +29,7 @@ export type {
   ResourcePage,
   TakeOptions,
   UnitaryResource,
+  UpdateResourceOptions,
 } from './types.js';
 
 export {
