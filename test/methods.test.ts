@@ -92,18 +92,18 @@ describe('the business methods', () => {
      * The trap this closes: no exception was thrown, so a caller assumes they hold the
      * seat. They do not.
      */
-    it('throws when the engine reports FAILED', async () => {
-      engine.on('take', (_call, callback) => callback(null, aHolderResponse({ status: 3 })));
+    it('throws when the engine reports EXPIRED', async () => {
+      engine.on('take', (_call, callback) => callback(null, aHolderResponse({ status: 4 })));
 
       const error = await caerus.unitary('seat_A12').take().catch((caught: unknown) => caught);
 
       expect(error).toBeInstanceOf(ConflictError);
-      expect((error as CaerusError).message).toMatch(/FAILED/);
+      expect((error as CaerusError).message).toMatch(/EXPIRED/);
     });
 
     /** QUEUED is real, just not yours yet. The caller decides what to do about it. */
     it('returns a QUEUED holder with the status visible', async () => {
-      engine.on('take', (_call, callback) => callback(null, aHolderResponse({ status: 4 })));
+      engine.on('take', (_call, callback) => callback(null, aHolderResponse({ status: 3 })));
 
       const holder = await caerus.unitary('seat_A12').take();
 
@@ -117,13 +117,13 @@ describe('the business methods', () => {
       expect((await caerus.unitary('seat_A12').take()).status).toBe('PENDING');
     });
 
-    /** Asking what state something is in and being told FAILED is an answer. */
-    it('does not throw when a query finds a FAILED holder', async () => {
+    /** Asking what state something is in and being told EXPIRED is an answer. */
+    it('does not throw when a query finds an EXPIRED holder', async () => {
       engine.on('getResourceHolder', (_call, callback) =>
-        callback(null, aHolderResponse({ status: 3 })),
+        callback(null, aHolderResponse({ status: 4 })),
       );
 
-      expect((await caerus.getResourceHolder('hld-1')).status).toBe('FAILED');
+      expect((await caerus.getResourceHolder('hld-1')).status).toBe('EXPIRED');
     });
 
     it('refuses to guess at a status it does not know', async () => {
@@ -399,6 +399,45 @@ describe('the business methods', () => {
       await expect(caerus.pooled('general_admission').takeMany(4)).rejects.toBeInstanceOf(
         ConflictError,
       );
+    });
+  });
+
+  describe('updateResource and deleteResource', () => {
+    it('sends updateResource request correctly', async () => {
+      let receivedRequest: Record<string, unknown> | undefined;
+      engine.on('updateResource', (call, callback) => {
+        receivedRequest = call.request as Record<string, unknown>;
+        callback(null, {
+          resourceId: 'res-1',
+          key: 'general_admission',
+          templateId: 'tpl-1',
+          availableAmount: 150,
+          pendingCount: 0,
+          groupKey: 'main_hall',
+          metadata: '',
+        });
+      });
+
+      const resource = await caerus.updateResource('general_admission', 50, { groupKey: 'main_hall' });
+
+      expect(receivedRequest).toMatchObject({
+        resourceKey: 'general_admission',
+        deltaAmount: 50,
+        groupKey: 'main_hall',
+      });
+      expect(resource.availableAmount).toBe(150);
+    });
+
+    it('sends deleteResource request correctly', async () => {
+      let receivedKey: string | undefined;
+      engine.on('deleteResource', (call, callback) => {
+        receivedKey = (call.request as { key: string }).key;
+        callback(null, {});
+      });
+
+      await caerus.deleteResource('seat_A12');
+
+      expect(receivedKey).toBe('seat_A12');
     });
   });
 });

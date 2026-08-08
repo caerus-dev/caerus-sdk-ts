@@ -69,8 +69,8 @@ const STATUS_BY_WIRE: Record<number, ResourceHolderStatus> = {
   [WireStatus.PENDING]: 'PENDING',
   [WireStatus.CONFIRMED]: 'CONFIRMED',
   [WireStatus.RELEASED]: 'RELEASED',
-  [WireStatus.FAILED]: 'FAILED',
   [WireStatus.QUEUED]: 'QUEUED',
+  [WireStatus.EXPIRED]: 'EXPIRED',
 };
 
 export function decodeStatus(wire: number, context: string): ResourceHolderStatus {
@@ -117,16 +117,16 @@ export function toResourcePage(response: GetResourcesByGroupKeyResponse): Resour
 }
 
 /**
- * A holder that came back FAILED is not one you can use. Handing it over as if the
+ * A holder that came back EXPIRED is not one you can use. Handing it over as if the
  * call had worked is the trap this guards: a caller who checks only for a thrown error
  * would carry on believing they hold the seat.
  *
- * Queries are exempt — asking what state a holder is in and being told FAILED is
+ * Queries are exempt — asking what state a holder is in and being told EXPIRED is
  * an answer, not a failure.
  */
 export function assertUsable(holder: ResourceHolder): ResourceHolder {
-  if (holder.status === 'FAILED') {
-    throw new ConflictError(`Caerus could not hold ${holder.id}: its status is FAILED.`);
+  if (holder.status === 'EXPIRED') {
+    throw new ConflictError(`Caerus could not hold ${holder.id}: its status is EXPIRED.`);
   }
   return holder;
 }

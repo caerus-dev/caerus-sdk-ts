@@ -20,8 +20,8 @@ compared with a checksum.
 |---|---|
 | Repository | `caerus-dev/caerus-back` |
 | Path | `data-plane-service/src/main/proto/sre_service.proto` |
-| Commit | `c3c5095b93329b54fbd0d7597ff297f02b7e3d9d` |
-| SHA-256 | `83f2941afd93fc2265c49f93461c8602a61ebad0531f56bdccea852a2159afbe` |
+| Commit | `4fb1d73f599278e06eef5f31598758b06534a9a0` |
+| SHA-256 | `682d05b9e96fffd12f490607aaf24fcfba0ba6a9a72f09e834e2344d47a7e6c9` |
 
 ## Checking it is still current
 

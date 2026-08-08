@@ -12,6 +12,7 @@ import type {
   ResourcePage,
   TakeOptions,
   UnitaryResource,
+  UpdateResourceOptions,
 } from './types.js';
 
 /** A resource the mock starts out knowing about. */
@@ -27,6 +28,8 @@ export interface MockResourceSeed {
 export type MockMethod =
   | 'createUnitary'
   | 'createMultiple'
+  | 'updateResource'
+  | 'deleteResource'
   | 'take'
   | 'takeMany'
   | 'confirm'
@@ -235,6 +238,48 @@ export class InMemoryCaerusClient implements SharedResourceApi {
     return this.#toResource(resource);
   }
 
+  async updateResource(
+    key: string,
+    deltaAmount: number,
+    options: UpdateResourceOptions = {},
+  ): Promise<Resource> {
+    this.#guard('updateResource');
+    requireText(key, 'key');
+
+    const resource = this.#requireResource(key);
+
+    if (resource.availableAmount + deltaAmount < 0) {
+      throw new ConflictError(
+        `Available amount cannot be negative for resource: ${key}`,
+      );
+    }
+
+    resource.availableAmount += deltaAmount;
+    if (options.groupKey !== undefined) {
+      resource.groupKey = options.groupKey;
+    }
+    if (options.metadata !== undefined) {
+      resource.metadata = options.metadata;
+    }
+
+    return this.#toResource(resource);
+  }
+
+  async deleteResource(key: string): Promise<void> {
+    this.#guard('deleteResource');
+    requireText(key, 'key');
+
+    const resource = this.#requireResource(key);
+
+    if (resource.pendingCount > 0) {
+      throw new ConflictError(
+        `Cannot delete resource with active holds: ${key}`,
+      );
+    }
+
+    this.#resources.delete(key);
+  }
+
   // --- Handles ----------------------------------------------------------------------
 
   unitary(key: string): UnitaryResource {
@@ -310,7 +355,7 @@ export class InMemoryCaerusClient implements SharedResourceApi {
 
   async getResourceHolder(resourceHolderId: string): Promise<ResourceHolder> {
     this.#guard('getResourceHolder');
-    // Like the real client, a query reports FAILED rather than throwing on it.
+    // Like the real client, a query reports EXPIRED rather than throwing on it.
     return this.#toHolder(this.#requireHolder(resourceHolderId));
   }
 
@@ -392,7 +437,7 @@ export class InMemoryCaerusClient implements SharedResourceApi {
   }
 
   #expire(holder: StoredHolder): void {
-    this.#giveBack(holder, 'FAILED');
+    this.#giveBack(holder, 'EXPIRED');
   }
 
   /** Returns the units to the resource and marks the holder with its new status. */

@@ -88,7 +88,7 @@ export async function testExpiry(): Promise<void> {
   caerus.advanceTime(301);
 
   const after = await caerus.getResourceHolder(reservation.id);
-  console.assert(after.status === 'FAILED', 'it should have expired');
+  console.assert(after.status === 'EXPIRED', 'it should have expired');
 
   const seat = await caerus.getResource('seat_A12');
   console.assert(seat.availableAmount === 1, 'and released its unit');

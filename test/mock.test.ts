@@ -141,7 +141,7 @@ describe('the in-memory client', () => {
       const holder = await caerus.unitary('seat_A12').take({ ttlSeconds: 300 });
       caerus.advanceTime(301);
 
-      expect((await caerus.getResourceHolder(holder.id)).status).toBe('FAILED');
+      expect((await caerus.getResourceHolder(holder.id)).status).toBe('EXPIRED');
     });
 
     it('leaves alone what is not due yet', async () => {
@@ -171,7 +171,7 @@ describe('the in-memory client', () => {
       const holder = await caerus.unitary('seat_A12').take();
       caerus.expire(holder.id);
 
-      expect((await caerus.getResourceHolder(holder.id)).status).toBe('FAILED');
+      expect((await caerus.getResourceHolder(holder.id)).status).toBe('EXPIRED');
     });
 
     it('refuses to confirm one that expired', async () => {
@@ -267,14 +267,14 @@ describe('the in-memory client', () => {
       });
     });
 
-    it('reports FAILED from a query rather than throwing', async () => {
+    it('reports EXPIRED from a query rather than throwing', async () => {
       const caerus = aMock();
 
       const holder = await caerus.unitary('seat_A12').take();
       caerus.expire(holder.id);
 
       await expect(caerus.getResourceHolder(holder.id)).resolves.toMatchObject({
-        status: 'FAILED',
+        status: 'EXPIRED',
       });
     });
 
@@ -338,5 +338,37 @@ describe('the in-memory client', () => {
     expect(first.hasNextPage).toBe(true);
     expect(second.resources.map((r) => r.key)).toEqual(['b']);
     expect(second.hasNextPage).toBe(false);
+  });
+
+  describe('updateResource and deleteResource in mock', () => {
+    it('updates resource available amount', async () => {
+      const caerus = aMock(10);
+
+      const updated = await caerus.updateResource('seat_A12', 5, { groupKey: 'row_X' });
+
+      expect(updated.availableAmount).toBe(15);
+      expect(updated.groupKey).toBe('row_X');
+    });
+
+    it('refuses update that results in negative stock', async () => {
+      const caerus = aMock(5);
+
+      await expect(caerus.updateResource('seat_A12', -10)).rejects.toBeInstanceOf(ConflictError);
+    });
+
+    it('deletes a resource with no active holds', async () => {
+      const caerus = aMock(5);
+
+      await caerus.deleteResource('seat_A12');
+
+      await expect(caerus.getResource('seat_A12')).rejects.toThrow(/not found/);
+    });
+
+    it('refuses to delete a resource with pending holds', async () => {
+      const caerus = aMock(5);
+      await caerus.unitary('seat_A12').take();
+
+      await expect(caerus.deleteResource('seat_A12')).rejects.toBeInstanceOf(ConflictError);
+    });
   });
 });

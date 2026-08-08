@@ -14,7 +14,7 @@ export type Metadata = Record<string, unknown>;
  * SDK does not wait for that — a call that hangs for an unbounded time is worse than a
  * status you can act on.
  */
-export type ResourceHolderStatus = 'PENDING' | 'CONFIRMED' | 'RELEASED' | 'FAILED' | 'QUEUED';
+export type ResourceHolderStatus = 'PENDING' | 'CONFIRMED' | 'RELEASED' | 'EXPIRED' | 'QUEUED';
 
 /**
  * A hold on some amount of a resource.
@@ -86,6 +86,18 @@ export interface CreateResourceOptions {
   /** Ties resources together so they can be queried as a set. */
   groupKey?: string;
   metadata?: Metadata;
+}
+
+/** Extras for updating an existing resource. */
+export interface UpdateResourceOptions {
+  /** Replaces the group key. */
+  groupKey?: string;
+  metadata?: Metadata;
+  /**
+   * Makes the update repeatable: sending the same key twice is a no-op.
+   * Required when the template has useIdempotency enabled.
+   */
+  idempotencyKey?: string;
 }
 
 /** Extras for confirming a holder. */
