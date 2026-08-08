@@ -439,5 +439,14 @@ describe('the business methods', () => {
 
       expect(receivedKey).toBe('seat_A12');
     });
+
+    it.each([Number.NaN, Number.POSITIVE_INFINITY, 2.5])(
+      'refuses non-integer deltaAmount %s in updateResource',
+      async (deltaAmount) => {
+        await expect(
+          caerus.updateResource('general_admission', deltaAmount),
+        ).rejects.toBeInstanceOf(ValidationError);
+      },
+    );
   });
 });

@@ -143,6 +143,7 @@ export class CaerusClient implements SharedResourceApi {
     options: UpdateResourceOptions = {},
   ): Promise<Resource> {
     requireText(key, 'key');
+    requireInteger(deltaAmount, 'deltaAmount');
 
     const response = await this.#transport.unary(
       this.#transport.raw.updateResource.bind(this.#transport.raw),
@@ -363,5 +364,11 @@ function requireText(value: string, name: string): void {
 function requirePositive(value: number, name: string): void {
   if (!Number.isFinite(value) || value <= 0) {
     throw new ValidationError(`${name} must be greater than zero`);
+  }
+}
+
+function requireInteger(value: number, name: string): void {
+  if (!Number.isInteger(value)) {
+    throw new ValidationError(`${name} must be a finite integer`);
   }
 }

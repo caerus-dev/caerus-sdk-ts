@@ -88,9 +88,18 @@ export function resolveOptions(options: CaerusClientOptions): ResolvedClientOpti
     throw new TypeError('CaerusClient requires an apiKey. Create one in the Caerus dashboard');
   }
 
-  const envEndpoint = typeof process !== 'undefined' ? process.env?.CAERUS_ENDPOINT : undefined;
-  const rawEndpoint = typeof options.endpoint === 'string' ? options.endpoint.trim() : '';
-  const endpoint = rawEndpoint || (envEndpoint ? envEndpoint.trim() : '') || DEFAULT_ENDPOINT;
+  let endpoint = DEFAULT_ENDPOINT;
+  if (options.endpoint !== undefined) {
+    if (typeof options.endpoint !== 'string' || options.endpoint.trim() === '') {
+      throw new TypeError('endpoint cannot be blank');
+    }
+    endpoint = options.endpoint.trim();
+  } else {
+    const envEndpoint = typeof process !== 'undefined' ? process.env?.CAERUS_ENDPOINT : undefined;
+    if (envEndpoint && envEndpoint.trim() !== '') {
+      endpoint = envEndpoint.trim();
+    }
+  }
 
   const envTls =
     typeof process !== 'undefined' && process.env?.CAERUS_TLS !== undefined

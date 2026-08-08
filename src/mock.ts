@@ -245,6 +245,7 @@ export class InMemoryCaerusClient implements SharedResourceApi {
   ): Promise<Resource> {
     this.#guard('updateResource');
     requireText(key, 'key');
+    requireInteger(deltaAmount, 'deltaAmount');
 
     const resource = this.#requireResource(key);
 
@@ -515,5 +516,11 @@ function requireText(value: string, name: string): void {
 function requirePositive(value: number, name: string): void {
   if (!Number.isFinite(value) || value <= 0) {
     throw new ValidationError(`${name} must be greater than zero`);
+  }
+}
+
+function requireInteger(value: number, name: string): void {
+  if (!Number.isInteger(value)) {
+    throw new ValidationError(`${name} must be a finite integer`);
   }
 }
