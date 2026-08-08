@@ -20,6 +20,7 @@ import type {
   ResourcePage,
   TakeOptions,
   UnitaryResource,
+  UpdateResourceOptions,
 } from './types.js';
 
 /**
@@ -127,6 +128,50 @@ export class CaerusClient implements SharedResourceApi {
     );
 
     return toResource(response);
+  }
+
+  /**
+   * Adjusts the available stock of an existing resource by a delta (positive or negative).
+   *
+   * ```typescript
+   * await caerus.updateResource('general_admission', 50); // add 50 units
+   * ```
+   */
+  async updateResource(
+    key: string,
+    deltaAmount: number,
+    options: UpdateResourceOptions = {},
+  ): Promise<Resource> {
+    requireText(key, 'key');
+
+    const response = await this.#transport.unary(
+      this.#transport.raw.updateResource.bind(this.#transport.raw),
+      {
+        resourceKey: key,
+        deltaAmount,
+        groupKey: options.groupKey,
+        metadata: encodeMetadata(options.metadata),
+        idempotencyKey: options.idempotencyKey,
+      },
+    );
+
+    return toResource(response);
+  }
+
+  /**
+   * Removes a resource. Fails if it has active (pending) holders.
+   *
+   * ```typescript
+   * await caerus.deleteResource('seat_A12');
+   * ```
+   */
+  async deleteResource(key: string): Promise<void> {
+    requireText(key, 'key');
+
+    await this.#transport.unary(
+      this.#transport.raw.deleteResource.bind(this.#transport.raw),
+      { key },
+    );
   }
 
   // --- Handles -------------------------------------------------------------------
@@ -251,8 +296,8 @@ export class CaerusClient implements SharedResourceApi {
   /**
    * Reads a holder as it stands.
    *
-   * This is the one place a `FAILED` holder is returned rather than thrown: asking what
-   * state something is in and being told FAILED is an answer, not a failure.
+   * This is the one place an `EXPIRED` holder is returned rather than thrown: asking what
+   * state something is in and being told EXPIRED is an answer, not a failure.
    */
   async getResourceHolder(resourceHolderId: string): Promise<ResourceHolder> {
     requireText(resourceHolderId, 'resourceHolderId');

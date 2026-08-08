@@ -59,7 +59,7 @@ apartadas a tu nombre.
                            │
           confirm  ────────┼────────▶  CONFIRMED   (las unidades quedan tomadas)
           release  ────────┼────────▶  RELEASED    (vuelven al stock)
-       se vence   ────────┴────────▶  RELEASED    (vuelven solas)
+       se vence   ────────┴────────▶  EXPIRED     (vuelven al stock solas)
 ```
 
 Un holder nace **PENDING** con un vencimiento. Ese vencimiento es la red de seguridad:
@@ -74,8 +74,9 @@ importar.
 
 `release` las devuelve antes de tiempo.
 
-En el estado `QUEUED` no entramos acá: aparece solo con plantillas configuradas con la
-estrategia de conflicto `QUEUE`, que a la fecha sigue en desarrollo del lado del motor.
+El estado **`QUEUED`** aparece cuando la plantilla está configurada con la estrategia
+de conflicto `QUEUE` y no hay stock disponible al hacer el `take`: la reserva queda
+encolada en el motor a la espera de que se liberen unidades.
 
 ## Idempotencia
 

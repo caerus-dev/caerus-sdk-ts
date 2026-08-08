@@ -57,6 +57,6 @@ export async function giveThemLonger(resourceHolderId: string): Promise<void> {
 export async function stillHeld(resourceHolderId: string): Promise<boolean> {
   const holder = await caerus.getResourceHolder(resourceHolderId);
 
-  // A query reports the status rather than throwing on it, FAILED included.
+  // A query reports the status rather than throwing on it, EXPIRED included.
   return holder.status === 'PENDING';
 }
