@@ -43,7 +43,6 @@ Node 20 or newer. TypeScript types are included; JavaScript works too.
 import { CaerusClient } from '@caerus-dev/sdk';
 
 const caerus = new CaerusClient({
-  endpoint: process.env.CAERUS_ENDPOINT!,   // "host:puerto" — see below
   apiKey: process.env.CAERUS_API_KEY!,
 });
 ```
@@ -85,9 +84,9 @@ const caerus = new CaerusClient({
 
 | Option | Default | What it does |
 |---|---|---|
-| `endpoint` | — | `host:puerto` of the engine, no scheme and no path. Required |
 | `apiKey` | — | From the Caerus dashboard. Required. Identifies your environment too |
-| `tls` | `true` | Encrypts the connection. Turn off only against a local engine |
+| `endpoint` | `api.caerus.dev:443` | `host:puerto` of the engine, no scheme and no path. Optional (overridden by `process.env.CAERUS_ENDPOINT`) |
+| `tls` | `true` | Encrypts the connection. Turn off only against a local engine (`process.env.CAERUS_TLS`) |
 | `timeoutMs` | `10000` | Deadline on every call |
 | `logger` | `console.error` | Where the SDK reports things it handled but you should know about |
 
@@ -214,10 +213,10 @@ More in `examples/02-holders.ts`, in the repository.
 | `CONFIRMED` | Settled. The units are taken for good |
 | `RELEASED` | Given back |
 | `QUEUED` | No stock; the engine parked the request. **Nothing is held yet** |
-| `FAILED` | The hold did not survive — it expired, most likely |
+| `EXPIRED` | The hold did not survive — it timed out and stock was released |
 
-`take` throws on `FAILED` rather than handing back something that looks successful.
-`getResourceHolder` returns it: asking what state something is in and being told `FAILED` is
+`take` throws on `EXPIRED` rather than handing back something that looks successful.
+`getResourceHolder` returns it: asking what state something is in and being told `EXPIRED` is
 an answer, not a failure.
 
 ### Inventory
@@ -225,6 +224,8 @@ an answer, not a failure.
 ```typescript
 createUnitary(templateName, key, options?)                    // one unit, no amount
 createMultiple(templateName, key, availableAmount, options?)  // several
+updateResource(key, deltaAmount, options?)                    // adjust stock (+/-)
+deleteResource(key)                                           // remove a resource
 getResource(key)
 getResourcesByGroup(groupKey, options?)   // { page?, pageSize? }
 ```
@@ -294,7 +295,7 @@ await buySeat(caerus, 'seat_A12');
 const holder = await caerus.unitary('seat_A12').take({ ttlSeconds: 300 });
 
 caerus.advanceTime(301);                 // 301 seconds later
-await caerus.getResourceHolder(holder.id);   // status: 'FAILED'
+await caerus.getResourceHolder(holder.id);   // status: 'EXPIRED'
 ```
 
 A mock that expired holders on a real clock would make your tests wait, and fail now
