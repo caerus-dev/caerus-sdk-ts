@@ -49,15 +49,35 @@ describe('the defaults', () => {
     expect(resolveOptions({ apiKey: 'k' }).endpoint).toBe(DEFAULT_ENDPOINT);
   });
 
+  it('refuses an explicit blank endpoint', () => {
+    expect(() => new CaerusClient({ endpoint: '   ', apiKey: 'no-es-una-clave' })).toThrow(
+      TypeError,
+    );
+  });
+
   it('honors environment variable overrides for endpoint and tls', () => {
-    process.env.CAERUS_ENDPOINT = 'localhost:9090';
-    process.env.CAERUS_TLS = 'false';
+    const origEndpoint = process.env.CAERUS_ENDPOINT;
+    const origTls = process.env.CAERUS_TLS;
 
-    const resolved = resolveOptions({ apiKey: 'k' });
-    expect(resolved.endpoint).toBe('localhost:9090');
-    expect(resolved.tls).toBe(false);
+    try {
+      process.env.CAERUS_ENDPOINT = 'localhost:9090';
+      process.env.CAERUS_TLS = 'false';
 
-    delete process.env.CAERUS_ENDPOINT;
-    delete process.env.CAERUS_TLS;
+      const resolved = resolveOptions({ apiKey: 'k' });
+      expect(resolved.endpoint).toBe('localhost:9090');
+      expect(resolved.tls).toBe(false);
+    } finally {
+      if (origEndpoint === undefined) {
+        delete process.env.CAERUS_ENDPOINT;
+      } else {
+        process.env.CAERUS_ENDPOINT = origEndpoint;
+      }
+
+      if (origTls === undefined) {
+        delete process.env.CAERUS_TLS;
+      } else {
+        process.env.CAERUS_TLS = origTls;
+      }
+    }
   });
 });

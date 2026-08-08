@@ -370,5 +370,15 @@ describe('the in-memory client', () => {
 
       await expect(caerus.deleteResource('seat_A12')).rejects.toBeInstanceOf(ConflictError);
     });
+
+    it.each([Number.NaN, Number.POSITIVE_INFINITY, 2.5])(
+      'refuses non-integer deltaAmount %s in updateResource',
+      async (deltaAmount) => {
+        const caerus = aMock(5);
+        await expect(caerus.updateResource('seat_A12', deltaAmount)).rejects.toBeInstanceOf(
+          ValidationError,
+        );
+      },
+    );
   });
 });
