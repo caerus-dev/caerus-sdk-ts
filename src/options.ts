@@ -75,6 +75,27 @@ export interface ResolvedClientOptions {
 }
 
 /**
+ * Reads `CAERUS_TLS`, and only ever turns encryption *off* on an explicit `false` or `0`.
+ *
+ * The two mistakes are not symmetric. Leaving TLS on when you meant to disable it fails
+ * loudly at connection time, with an OpenSSL error you cannot miss. Disabling it when you
+ * meant to leave it on says nothing at all, and the API Key — which travels on every
+ * call — goes out in the clear.
+ *
+ * So anything that is not clearly "off" is treated as "on": `TRUE`, `yes`, an empty
+ * string, a typo. Someone who writes `CAERUS_TLS=TRUE` meaning to enable encryption gets
+ * encryption.
+ */
+function readEnvTls(): boolean | undefined {
+  const raw = typeof process !== 'undefined' ? process.env?.CAERUS_TLS : undefined;
+  if (raw === undefined) {
+    return undefined;
+  }
+  const value = raw.trim().toLowerCase();
+  return value === 'false' || value === '0' ? false : true;
+}
+
+/**
  * Fails at construction rather than on the first call. A missing key is a
  * wiring mistake, and it should surface where it was made.
  */
@@ -101,10 +122,7 @@ export function resolveOptions(options: CaerusClientOptions): ResolvedClientOpti
     }
   }
 
-  const envTls =
-    typeof process !== 'undefined' && process.env?.CAERUS_TLS !== undefined
-      ? process.env.CAERUS_TLS === 'true' || process.env.CAERUS_TLS === '1'
-      : undefined;
+  const envTls = readEnvTls();
 
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
