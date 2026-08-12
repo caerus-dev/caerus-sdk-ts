@@ -94,26 +94,49 @@ red. Si necesitás probar el vencimiento o un timeout, hacelo contra un motor re
 `close()` suelta la conexión. En un proceso de vida corta conviene llamarlo; si no, el
 proceso puede quedar colgado esperando que el socket se cierre.
 
-## El SDK no lee variables de entorno
+## Cómo se resuelve la configuración
 
-No hay un endpoint por defecto horneado adentro, y el SDK tampoco mira `process.env`.
-Todo lo que necesita se lo pasás vos:
+Dos opciones se pueden dar por variable de entorno: `CAERUS_ENDPOINT` y `CAERUS_TLS`. La
+precedencia es siempre la misma, **lo explícito le gana al entorno**:
 
-```typescript
-const caerus = new CaerusClient({
-  endpoint: process.env.CAERUS_GRPC_URL,
-  apiKey: process.env.CAERUS_API_KEY,
-  tls: process.env.CAERUS_TLS !== 'false',
-});
-```
+| | explícito | si no, el entorno | si tampoco |
+|---|---|---|---|
+| `endpoint` | `{ endpoint }` | `CAERUS_ENDPOINT` | **falla al construir** |
+| `tls` | `{ tls }` | `CAERUS_TLS` | `true` |
+| `apiKey` | `{ apiKey }` | — | falla al construir |
 
-Es una línea más y vale la pena por tres razones. Los nombres de las variables pasarían
-a ser API pública, y no se podrían renombrar sin romperle la configuración a todo el
-mundo. Una variable suelta en un CI cambiaría el comportamiento de los tests sin que
-nadie lo haya escrito en ningún lado. Y las convenciones de entorno difieren entre
-lenguajes, mientras que la idea es que los cuatro SDKs se parezcan.
+La API Key **no** se lee del entorno. Es una credencial, y hacer que el SDK la levante
+sola de `process.env` invita a que aparezca en lugares donde nadie la puso a propósito.
 
-Que la configuración venga del entorno está bien; que la lea el SDK a tus espaldas, no.
+### No hay ningún endpoint horneado
+
+Si no viene ni por opción ni por variable, el cliente **falla al construirse** con un
+mensaje que dice las dos formas de darlo. Es deliberado, y ya se probó al revés: hubo
+brevemente un default apuntando a `api.caerus.dev:443`, un servicio que no existe, y el
+efecto es que `new CaerusClient({ apiKey })` falla con un error de conexión que no
+sugiere en ningún momento que la dirección nunca fue real.
+
+Un default solo tiene sentido apuntando a algo verificado, y agregarlo después no rompe
+a nadie.
+
+### `CAERUS_TLS` solo puede apagar el cifrado a propósito
+
+Únicamente `false` o `0` —sin distinguir mayúsculas, tolerando espacios— desactivan TLS.
+Cualquier otra cosa lo deja prendido: `TRUE`, `yes`, vacío, un error de tipeo.
+
+Parece pedante hasta que se mira la asimetría. Dejar TLS prendido sin querer falla fuerte
+y al instante, con un error de OpenSSL imposible de pasar por alto. Apagarlo sin querer
+no dice absolutamente nada, y la API Key —que viaja en cada llamada— sale en texto plano.
+Una condición escrita como `=== 'true'` hace que quien escribe `CAERUS_TLS=TRUE` para
+*encender* el cifrado lo apague. Eso estuvo en el código y se corrigió.
+
+### Por qué la lista es corta
+
+Cada nombre de variable que el SDK aprende a leer pasa a ser API pública: renombrarla
+después le rompe la configuración a todo el mundo. Y una variable suelta en un CI cambia
+el comportamiento sin que nadie lo haya escrito en ningún archivo.
+
+Por eso son dos y no diez. Todo lo demás se pasa explícitamente.
 
 ## Lo que se genera y no se commitea
 
