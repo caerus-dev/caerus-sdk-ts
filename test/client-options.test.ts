@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { CaerusClient } from '../src/client.js';
-import { DEFAULT_TIMEOUT_MS, resolveOptions } from '../src/options.js';
+import { DEFAULT_ENDPOINT, DEFAULT_TIMEOUT_MS, resolveOptions } from '../src/options.js';
 
 describe('constructing a client', () => {
   it.each([
@@ -21,12 +21,14 @@ describe('constructing a client', () => {
     client.close();
   });
 
-  it('says how to supply an endpoint when there is none', () => {
+  it('needs nothing but an apiKey to reach the hosted Caerus', () => {
     const original = process.env.CAERUS_ENDPOINT;
     delete process.env.CAERUS_ENDPOINT;
 
     try {
-      expect(() => new CaerusClient({ apiKey: 'no-es-una-clave' })).toThrow(/CAERUS_ENDPOINT/);
+      const client = new CaerusClient({ apiKey: 'no-es-una-clave' });
+      expect(client.endpoint).toBe(DEFAULT_ENDPOINT);
+      client.close();
     } finally {
       if (original !== undefined) {
         process.env.CAERUS_ENDPOINT = original;
@@ -57,16 +59,24 @@ describe('the defaults', () => {
     expect(resolveOptions(base).timeoutMs).toBe(DEFAULT_TIMEOUT_MS);
   });
 
-  // No address is baked in on purpose: a wrong one would surface as a connection error
-  // with nothing to say it was never meant to work.
-  it('has no built-in endpoint to fall back on', () => {
+  // Explicit beats the environment beats the built-in address. A value written in code
+  // must never be overruled by a variable someone else set on the machine.
+  it('prefers an explicit endpoint, then the environment, then the built-in one', () => {
     const original = process.env.CAERUS_ENDPOINT;
-    delete process.env.CAERUS_ENDPOINT;
 
     try {
-      expect(() => resolveOptions({ apiKey: 'k' })).toThrow(TypeError);
+      process.env.CAERUS_ENDPOINT = 'del-entorno:9090';
+      expect(resolveOptions({ apiKey: 'k', endpoint: 'explicito:9090' }).endpoint).toBe(
+        'explicito:9090',
+      );
+      expect(resolveOptions({ apiKey: 'k' }).endpoint).toBe('del-entorno:9090');
+
+      delete process.env.CAERUS_ENDPOINT;
+      expect(resolveOptions({ apiKey: 'k' }).endpoint).toBe(DEFAULT_ENDPOINT);
     } finally {
-      if (original !== undefined) {
+      if (original === undefined) {
+        delete process.env.CAERUS_ENDPOINT;
+      } else {
         process.env.CAERUS_ENDPOINT = original;
       }
     }

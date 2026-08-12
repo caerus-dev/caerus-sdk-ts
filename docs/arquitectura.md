@@ -101,23 +101,31 @@ precedencia es siempre la misma, **lo explícito le gana al entorno**:
 
 | | explícito | si no, el entorno | si tampoco |
 |---|---|---|---|
-| `endpoint` | `{ endpoint }` | `CAERUS_ENDPOINT` | **falla al construir** |
+| `endpoint` | `{ endpoint }` | `CAERUS_ENDPOINT` | `DEFAULT_ENDPOINT` |
 | `tls` | `{ tls }` | `CAERUS_TLS` | `true` |
 | `apiKey` | `{ apiKey }` | — | falla al construir |
 
 La API Key **no** se lee del entorno. Es una credencial, y hacer que el SDK la levante
 sola de `process.env` invita a que aparezca en lugares donde nadie la puso a propósito.
 
-### No hay ningún endpoint horneado
+### La dirección por defecto, y por qué existe
 
-Si no viene ni por opción ni por variable, el cliente **falla al construirse** con un
-mensaje que dice las dos formas de darlo. Es deliberado, y ya se probó al revés: hubo
-brevemente un default apuntando a `api.caerus.dev:443`, un servicio que no existe, y el
-efecto es que `new CaerusClient({ apiKey })` falla con un error de conexión que no
-sugiere en ningún momento que la dirección nunca fue real.
+`new CaerusClient({ apiKey })` alcanza: el cliente ya sabe a dónde ir. Es la forma de S3,
+donde el cliente lleva adentro una dirección conocida y lo que aporta el usuario son las
+credenciales. La API Key identifica el entorno, así que la dirección no tiene que hacerlo.
 
-Un default solo tiene sentido apuntando a algo verificado, y agregarlo después no rompe
-a nadie.
+`endpoint` queda como escape para todo lo que no sea el Caerus hospedado: uno propio, o
+uno local. Es el `--endpoint-url` de la CLI de AWS, y existe por el mismo motivo.
+
+**Lo que hay que cuidar es cambiar `DEFAULT_ENDPOINT`.** Esa constante le llega a todo el
+que no la sobrescriba, así que solo puede contener una dirección **comprobada de punta a
+punta**, no una que se espera que funcione. Ya pasó una vez: se horneó `api.caerus.dev:443`
+antes de que existiera el servicio, y el efecto es que quien instala el paquete recibe un
+error de conexión que en ningún momento sugiere que la dirección nunca fue real.
+
+La comprobación mínima antes de tocarla es que el host acepte TLS y negocie `h2`; sin
+HTTP/2 no hay gRPC posible. Un host que resuelve por DNS no prueba nada: los balanceadores
+aceptan cualquier nombre y cortan después.
 
 ### `CAERUS_TLS` solo puede apagar el cifrado a propósito
 

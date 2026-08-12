@@ -15,7 +15,12 @@ export {
   type MockOptions,
   type MockResourceSeed,
 } from './mock.js';
-export { DEFAULT_TIMEOUT_MS, type CaerusClientOptions, type CaerusLogger } from './options.js';
+export {
+  DEFAULT_ENDPOINT,
+  DEFAULT_TIMEOUT_MS,
+  type CaerusClientOptions,
+  type CaerusLogger,
+} from './options.js';
 
 export type {
   ConfirmOptions,

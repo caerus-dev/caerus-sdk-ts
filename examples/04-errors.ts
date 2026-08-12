@@ -15,7 +15,6 @@ import {
 } from '@caerus-dev/sdk';
 
 const caerus = new CaerusClient({
-  endpoint: process.env.CAERUS_ENDPOINT!,
   apiKey: process.env.CAERUS_API_KEY ?? '',
 });
 
