@@ -43,15 +43,33 @@ Node 20 or newer. TypeScript types are included; JavaScript works too.
 import { CaerusClient } from '@caerus-dev/sdk';
 
 const caerus = new CaerusClient({
-  endpoint: process.env.CAERUS_ENDPOINT!,   // "host:port" — see below
   apiKey: process.env.CAERUS_API_KEY!,
 });
 ```
 
-`endpoint` may be left out if `CAERUS_ENDPOINT` is set in the environment, in which case
-`new CaerusClient({ apiKey })` is enough. An explicit option always wins over it.
+That is the whole setup. The key identifies your environment, so the client already knows
+where to go — the same arrangement as an S3 client, which needs credentials rather than a
+URL.
 
-### What goes in `endpoint`
+### Pointing somewhere else
+
+You only need `endpoint` when the engine is not the hosted one: a Caerus you run yourself,
+or one on your machine.
+
+```typescript
+const caerus = new CaerusClient({
+  endpoint: 'localhost:9090',
+  apiKey: process.env.CAERUS_API_KEY!,
+  tls: false,                              // a local engine listens in plaintext
+});
+```
+
+`CAERUS_ENDPOINT` does the same thing without touching the code, which is the usual way
+to point a test suite at a local engine. The order is **explicit, then the environment,
+then the hosted address** — a value written in your code is never overruled by a variable
+someone set on the machine.
+
+#### What goes in `endpoint`
 
 **A host and a port, separated by a colon. Nothing else.**
 
@@ -67,31 +85,17 @@ localhost:9090/sre            ✗  no path
 It is not a URL, and that trips people up. Caerus speaks gRPC, not HTTP, so there is no
 `https://` and no path — just the address of the machine and the port it listens on.
 
-**Where to get it.** Running Caerus yourself, it is the address of the data plane; in a
-local setup, `localhost:9090`. Using someone else's, ask them: it is not something you
-can guess, and it is not on the dashboard.
+**Where to get it.** Running Caerus yourself, it is the address of your data plane; in a
+local setup, `localhost:9090`.
 
-There is deliberately **no address baked into this package**. A wrong one would reach you
-as a connection error with nothing to suggest it was never meant to work. Either pass
-`endpoint` or set `CAERUS_ENDPOINT`; leaving out both fails at construction, with a
-message that says so.
-
-**A local engine listens in plaintext**, so pair it with `tls: false`. Forget that and
-the failure is a bare OpenSSL message about a wrong version number, which says nothing
-about what is actually wrong.
-
-```typescript
-const caerus = new CaerusClient({
-  endpoint: 'localhost:9090',
-  apiKey: process.env.CAERUS_API_KEY!,
-  tls: false,
-});
-```
+**A local engine listens in plaintext**, so pair it with `tls: false`. Forget that and the
+failure is a bare OpenSSL message about a wrong version number, which says nothing about
+what is actually wrong.
 
 | Option | Default | What it does |
 |---|---|---|
 | `apiKey` | — | From the Caerus dashboard. Required. Identifies your environment too |
-| `endpoint` | — | `host:port` of the engine, no scheme and no path. Required, here or as `CAERUS_ENDPOINT` |
+| `endpoint` | the hosted Caerus | `host:port` of the engine, no scheme and no path. Only for a Caerus that is not the hosted one. `CAERUS_ENDPOINT` does the same |
 | `tls` | `true` | Encrypts the connection. Turn off only against a local engine. `CAERUS_TLS=false` does the same; **only `false` or `0` disable it**, so a typo cannot quietly send your key in the clear |
 | `timeoutMs` | `10000` | Deadline on every call |
 | `logger` | `console.error` | Where the SDK reports things it handled but you should know about |
@@ -113,7 +117,6 @@ Four seats on sale, one of them sold.
 import { CaerusClient } from '@caerus-dev/sdk';
 
 const caerus = new CaerusClient({
-  endpoint: process.env.CAERUS_ENDPOINT!,
   apiKey: process.env.CAERUS_API_KEY!,
 });
 

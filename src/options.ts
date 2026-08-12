@@ -17,10 +17,12 @@ export interface CaerusClientOptions {
    * Host and port of the Caerus engine, for example `engine.example.com:443`. Not a URL:
    * no scheme, no path.
    *
-   * Optional here only because `process.env.CAERUS_ENDPOINT` can supply it instead. One
-   * of the two is required — there is no address baked into this package, because a wrong
-   * one would reach you as a connection error with nothing to suggest it was never meant
-   * to work.
+   * Rarely needed. It defaults to the hosted Caerus, which is where an API Key from the
+   * dashboard belongs, so most callers pass only `apiKey`. Set this when you point at
+   * something else: a Caerus you run yourself, or an engine on your machine.
+   *
+   * This is the same escape hatch as `--endpoint-url` in the AWS CLI, and it exists for
+   * the same reason.
    */
   endpoint?: string;
 
@@ -60,6 +62,18 @@ export interface CaerusClientOptions {
    */
   logger?: CaerusLogger;
 }
+
+/**
+ * Where the hosted Caerus answers, when nothing else says otherwise.
+ *
+ * The same shape as S3: one well-known address baked into the client, which the caller
+ * can override for anything that is not the hosted service. The API Key identifies the
+ * environment, so the address does not have to.
+ *
+ * Changing this ships to everyone who does not override it, so it should only ever be an
+ * address that has been checked end to end — not one that is expected to work.
+ */
+export const DEFAULT_ENDPOINT = 'api.caerus.dev:443';
 
 export const DEFAULT_TIMEOUT_MS = 10_000;
 
@@ -112,6 +126,9 @@ export function resolveOptions(options: CaerusClientOptions): ResolvedClientOpti
     throw new TypeError('CaerusClient requires an apiKey. Create one in the Caerus dashboard');
   }
 
+  // Explicit beats the environment beats the built-in address — the order the AWS SDKs
+  // use, and the one people expect: a value written in code is never overruled by a
+  // variable someone else set.
   let endpoint: string;
   if (options.endpoint !== undefined) {
     if (typeof options.endpoint !== 'string' || options.endpoint.trim() === '') {
@@ -121,13 +138,7 @@ export function resolveOptions(options: CaerusClientOptions): ResolvedClientOpti
   } else {
     const fromEnv =
       typeof process !== 'undefined' ? process.env?.CAERUS_ENDPOINT?.trim() : undefined;
-    if (!fromEnv) {
-      throw new TypeError(
-        'CaerusClient requires an endpoint. Pass { endpoint: "host:port" } or set CAERUS_ENDPOINT. ' +
-          'Ask whoever runs your Caerus for the address; a local engine is usually localhost:9090',
-      );
-    }
-    endpoint = fromEnv;
+    endpoint = fromEnv || DEFAULT_ENDPOINT;
   }
 
   const envTls = readEnvTls();

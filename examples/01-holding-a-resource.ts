@@ -7,8 +7,6 @@
 import { CaerusClient } from '@caerus-dev/sdk';
 
 const caerus = new CaerusClient({
-  // Replace with your engine's address. See the README.
-  endpoint: process.env.CAERUS_ENDPOINT!,
   apiKey: process.env.CAERUS_API_KEY ?? '',
 });
 
