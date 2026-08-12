@@ -80,4 +80,34 @@ describe('the defaults', () => {
       }
     }
   });
+
+  // The two mistakes are not symmetric: leaving TLS on by accident fails loudly at
+  // connection time, while turning it off by accident puts the API Key on the wire and
+  // says nothing. So only an unmistakable "off" is allowed to disable it.
+  it('only lets an explicit false or 0 disable encryption', () => {
+    const original = process.env.CAERUS_TLS;
+    const withEnv = (value: string) => {
+      process.env.CAERUS_TLS = value;
+      return resolveOptions({ apiKey: 'k' }).tls;
+    };
+
+    try {
+      for (const off of ['false', 'FALSE', ' false ', '0']) {
+        expect(withEnv(off), `${off} should disable TLS`).toBe(false);
+      }
+      // Anything else, including someone trying to *enable* it in the wrong case.
+      for (const on of ['true', 'TRUE', 'True', '1', 'yes', 'on', '', 'flase']) {
+        expect(withEnv(on), `${on} must not disable TLS`).toBe(true);
+      }
+      // An explicit option still wins over the environment.
+      process.env.CAERUS_TLS = 'false';
+      expect(resolveOptions({ apiKey: 'k', tls: true }).tls).toBe(true);
+    } finally {
+      if (original === undefined) {
+        delete process.env.CAERUS_TLS;
+      } else {
+        process.env.CAERUS_TLS = original;
+      }
+    }
+  });
 });
