@@ -43,9 +43,13 @@ Node 20 or newer. TypeScript types are included; JavaScript works too.
 import { CaerusClient } from '@caerus-dev/sdk';
 
 const caerus = new CaerusClient({
+  endpoint: process.env.CAERUS_ENDPOINT!,   // "host:port" — see below
   apiKey: process.env.CAERUS_API_KEY!,
 });
 ```
+
+`endpoint` may be left out if `CAERUS_ENDPOINT` is set in the environment, in which case
+`new CaerusClient({ apiKey })` is enough. An explicit option always wins over it.
 
 ### What goes in `endpoint`
 
@@ -67,8 +71,10 @@ It is not a URL, and that trips people up. Caerus speaks gRPC, not HTTP, so ther
 local setup, `localhost:9090`. Using someone else's, ask them: it is not something you
 can guess, and it is not on the dashboard.
 
-There is deliberately **no default**. One baked into this package would reach you as a
-connection error with nothing to suggest it was never meant to work.
+There is deliberately **no address baked into this package**. A wrong one would reach you
+as a connection error with nothing to suggest it was never meant to work. Either pass
+`endpoint` or set `CAERUS_ENDPOINT`; leaving out both fails at construction, with a
+message that says so.
 
 **A local engine listens in plaintext**, so pair it with `tls: false`. Forget that and
 the failure is a bare OpenSSL message about a wrong version number, which says nothing
@@ -85,8 +91,8 @@ const caerus = new CaerusClient({
 | Option | Default | What it does |
 |---|---|---|
 | `apiKey` | — | From the Caerus dashboard. Required. Identifies your environment too |
-| `endpoint` | `api.caerus.dev:443` | `host:puerto` of the engine, no scheme and no path. Optional (overridden by `process.env.CAERUS_ENDPOINT`) |
-| `tls` | `true` | Encrypts the connection. Turn off only against a local engine (`process.env.CAERUS_TLS`) |
+| `endpoint` | — | `host:port` of the engine, no scheme and no path. Required, here or as `CAERUS_ENDPOINT` |
+| `tls` | `true` | Encrypts the connection. Turn off only against a local engine. `CAERUS_TLS=false` does the same; **only `false` or `0` disable it**, so a typo cannot quietly send your key in the clear |
 | `timeoutMs` | `10000` | Deadline on every call |
 | `logger` | `console.error` | Where the SDK reports things it handled but you should know about |
 
@@ -107,7 +113,7 @@ Four seats on sale, one of them sold.
 import { CaerusClient } from '@caerus-dev/sdk';
 
 const caerus = new CaerusClient({
-  endpoint: 'REPLACE_ME.caerus.example:9090',
+  endpoint: process.env.CAERUS_ENDPOINT!,
   apiKey: process.env.CAERUS_API_KEY!,
 });
 

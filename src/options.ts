@@ -14,9 +14,13 @@ export interface CaerusLogger {
 /** How to reach Caerus. */
 export interface CaerusClientOptions {
   /**
-   * Host and port of the Caerus engine, for example `api.caerus.dev:443`.
+   * Host and port of the Caerus engine, for example `engine.example.com:443`. Not a URL:
+   * no scheme, no path.
    *
-   * Optional. Defaults to `api.caerus.dev:443` (or `process.env.CAERUS_ENDPOINT` if set).
+   * Optional here only because `process.env.CAERUS_ENDPOINT` can supply it instead. One
+   * of the two is required — there is no address baked into this package, because a wrong
+   * one would reach you as a connection error with nothing to suggest it was never meant
+   * to work.
    */
   endpoint?: string;
 
@@ -57,7 +61,6 @@ export interface CaerusClientOptions {
   logger?: CaerusLogger;
 }
 
-export const DEFAULT_ENDPOINT = 'api.caerus.dev:443';
 export const DEFAULT_TIMEOUT_MS = 10_000;
 
 /** Prefixed so a line from the SDK is recognisable in someone else's log. */
@@ -109,17 +112,22 @@ export function resolveOptions(options: CaerusClientOptions): ResolvedClientOpti
     throw new TypeError('CaerusClient requires an apiKey. Create one in the Caerus dashboard');
   }
 
-  let endpoint = DEFAULT_ENDPOINT;
+  let endpoint: string;
   if (options.endpoint !== undefined) {
     if (typeof options.endpoint !== 'string' || options.endpoint.trim() === '') {
       throw new TypeError('endpoint cannot be blank');
     }
     endpoint = options.endpoint.trim();
   } else {
-    const envEndpoint = typeof process !== 'undefined' ? process.env?.CAERUS_ENDPOINT : undefined;
-    if (envEndpoint && envEndpoint.trim() !== '') {
-      endpoint = envEndpoint.trim();
+    const fromEnv =
+      typeof process !== 'undefined' ? process.env?.CAERUS_ENDPOINT?.trim() : undefined;
+    if (!fromEnv) {
+      throw new TypeError(
+        'CaerusClient requires an endpoint. Pass { endpoint: "host:port" } or set CAERUS_ENDPOINT. ' +
+          'Ask whoever runs your Caerus for the address; a local engine is usually localhost:9090',
+      );
     }
+    endpoint = fromEnv;
   }
 
   const envTls = readEnvTls();
