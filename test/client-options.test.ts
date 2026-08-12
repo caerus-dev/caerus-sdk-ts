@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { CaerusClient } from '../src/client.js';
-import { DEFAULT_ENDPOINT, DEFAULT_TIMEOUT_MS, resolveOptions } from '../src/options.js';
+import { DEFAULT_TIMEOUT_MS, resolveOptions } from '../src/options.js';
 
 describe('constructing a client', () => {
   it.each([
@@ -13,13 +13,25 @@ describe('constructing a client', () => {
     expect(() => new CaerusClient(options as never)).toThrow(TypeError);
   });
 
-  it('allows constructing with only an apiKey using default endpoint', () => {
-    const client = new CaerusClient({ apiKey: 'no-es-una-clave' });
+  it('keeps the apiKey out of anything that gets serialised', () => {
+    const client = new CaerusClient({ endpoint: 'localhost:9090', apiKey: 'no-es-una-clave' });
 
-    expect(client.endpoint).toBe(DEFAULT_ENDPOINT);
     expect(JSON.stringify(client)).not.toContain('no-es-una-clave');
 
     client.close();
+  });
+
+  it('says how to supply an endpoint when there is none', () => {
+    const original = process.env.CAERUS_ENDPOINT;
+    delete process.env.CAERUS_ENDPOINT;
+
+    try {
+      expect(() => new CaerusClient({ apiKey: 'no-es-una-clave' })).toThrow(/CAERUS_ENDPOINT/);
+    } finally {
+      if (original !== undefined) {
+        process.env.CAERUS_ENDPOINT = original;
+      }
+    }
   });
 
   it.each([0, -1, Number.NaN])('refuses a timeout of %s', (timeoutMs) => {
@@ -34,19 +46,30 @@ describe('constructing a client', () => {
 });
 
 describe('the defaults', () => {
+  const base = { endpoint: 'localhost:9090', apiKey: 'k' };
+
   it('encrypts the connection unless told otherwise', () => {
-    expect(resolveOptions({ apiKey: 'k' }).tls).toBe(true);
-    expect(resolveOptions({ apiKey: 'k', tls: false }).tls).toBe(false);
+    expect(resolveOptions(base).tls).toBe(true);
+    expect(resolveOptions({ ...base, tls: false }).tls).toBe(false);
   });
 
   it('puts a deadline on calls even when none is asked for', () => {
-    expect(resolveOptions({ apiKey: 'k' }).timeoutMs).toBe(
-      DEFAULT_TIMEOUT_MS,
-    );
+    expect(resolveOptions(base).timeoutMs).toBe(DEFAULT_TIMEOUT_MS);
   });
 
-  it('uses default endpoint when none is provided', () => {
-    expect(resolveOptions({ apiKey: 'k' }).endpoint).toBe(DEFAULT_ENDPOINT);
+  // No address is baked in on purpose: a wrong one would surface as a connection error
+  // with nothing to say it was never meant to work.
+  it('has no built-in endpoint to fall back on', () => {
+    const original = process.env.CAERUS_ENDPOINT;
+    delete process.env.CAERUS_ENDPOINT;
+
+    try {
+      expect(() => resolveOptions({ apiKey: 'k' })).toThrow(TypeError);
+    } finally {
+      if (original !== undefined) {
+        process.env.CAERUS_ENDPOINT = original;
+      }
+    }
   });
 
   it('refuses an explicit blank endpoint', () => {
@@ -88,7 +111,7 @@ describe('the defaults', () => {
     const original = process.env.CAERUS_TLS;
     const withEnv = (value: string) => {
       process.env.CAERUS_TLS = value;
-      return resolveOptions({ apiKey: 'k' }).tls;
+      return resolveOptions(base).tls;
     };
 
     try {
@@ -101,7 +124,7 @@ describe('the defaults', () => {
       }
       // An explicit option still wins over the environment.
       process.env.CAERUS_TLS = 'false';
-      expect(resolveOptions({ apiKey: 'k', tls: true }).tls).toBe(true);
+      expect(resolveOptions({ ...base, tls: true }).tls).toBe(true);
     } finally {
       if (original === undefined) {
         delete process.env.CAERUS_TLS;
