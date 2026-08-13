@@ -73,7 +73,7 @@ export interface CaerusClientOptions {
  * Changing this ships to everyone who does not override it, so it should only ever be an
  * address that has been checked end to end — not one that is expected to work.
  */
-export const DEFAULT_ENDPOINT = 'api.caerus.dev:443';
+export const DEFAULT_ENDPOINT = 'caerus.dev.ar.sdk.apps.disilab.ar:443';
 
 export const DEFAULT_TIMEOUT_MS = 10_000;
 
