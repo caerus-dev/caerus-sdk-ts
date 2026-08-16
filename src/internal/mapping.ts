@@ -2,12 +2,14 @@ import { CaerusError, ConflictError } from '../errors.js';
 import type {
   Metadata,
   ResourceHolder,
+  ResourceHolderPage,
   ResourceHolderStatus,
   Resource,
   ResourcePage,
 } from '../types.js';
 import {
   ResourceHolderResponse_ResourceHolderStatus as WireStatus,
+  type GetResourceHoldersListResponse,
   type GetResourcesByGroupKeyResponse,
   type ResourceHolderResponse,
   type ResourceResponse,
@@ -84,6 +86,19 @@ export function decodeStatus(wire: number, context: string): ResourceHolderStatu
   return status;
 }
 
+const WIRE_BY_STATUS: Record<ResourceHolderStatus, WireStatus> = {
+  PENDING: WireStatus.PENDING,
+  CONFIRMED: WireStatus.CONFIRMED,
+  RELEASED: WireStatus.RELEASED,
+  QUEUED: WireStatus.QUEUED,
+  EXPIRED: WireStatus.EXPIRED,
+};
+
+/** The other direction, for filtering a query by status. */
+export function encodeStatus(status: ResourceHolderStatus): WireStatus {
+  return WIRE_BY_STATUS[status];
+}
+
 export function toResourceHolder(response: ResourceHolderResponse): ResourceHolder {
   const context = `holder ${response.holderId}`;
 
@@ -112,6 +127,15 @@ export function toResource(response: ResourceResponse): Resource {
 export function toResourcePage(response: GetResourcesByGroupKeyResponse): ResourcePage {
   return {
     resources: response.resources.map(toResource),
+    hasNextPage: response.nextPage,
+  };
+}
+
+export function toResourceHolderPage(
+  response: GetResourceHoldersListResponse,
+): ResourceHolderPage {
+  return {
+    holders: response.resourceHolders.map(toResourceHolder),
     hasNextPage: response.nextPage,
   };
 }

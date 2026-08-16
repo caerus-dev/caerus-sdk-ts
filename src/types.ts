@@ -113,6 +113,29 @@ export interface GetResourcesByGroupOptions {
   pageSize?: number;
 }
 
+/** One page of holders. */
+export interface ResourceHolderPage {
+  holders: ResourceHolder[];
+  /** Whether asking for the next page would return anything. */
+  hasNextPage: boolean;
+}
+
+/** Which holders to list, and in what order. */
+export interface ListResourceHoldersOptions {
+  /** Narrow it to one resource. Left out, every resource in the environment counts. */
+  resourceKey?: string;
+
+  /** Narrow it to one state — `PENDING` to see what is being held right now, say. */
+  status?: ResourceHolderStatus;
+
+  /** By when they were taken. Newest first unless you say otherwise. */
+  sort?: 'NEWEST_FIRST' | 'OLDEST_FIRST';
+
+  /** Zero-based. Defaults to the first page. */
+  page?: number;
+  pageSize?: number;
+}
+
 /**
  * A resource that holds exactly one unit — a numbered seat, a specific room, a slot.
  *

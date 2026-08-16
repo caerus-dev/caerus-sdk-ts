@@ -245,6 +245,30 @@ here, and only here.
 
 More in `examples/03-inventory.ts`, in the repository.
 
+### Listing holders
+
+```typescript
+listResourceHolders(options?)   // { resourceKey?, status?, sort?, page?, pageSize? }
+```
+
+Newest first, narrowed by whatever you pass. `status: 'PENDING'` answers "what is being
+held right now", which is what this usually gets asked for.
+
+```typescript
+const held = await caerus.listResourceHolders({
+  resourceKey: 'seat_A12',
+  status: 'PENDING',
+});
+
+console.log(held.holders.length, held.hasNextPage);
+```
+
+With no options it walks every holder in the environment, which on a busy one is a lot —
+pass `resourceKey`, `status`, or both. `sort: 'OLDEST_FIRST'` flips the order.
+
+Note the name: `getResourceHolder` fetches one by id, `listResourceHolders` searches. One
+letter of difference between those two would be a mistake waiting to happen.
+
 ---
 
 ## Errors

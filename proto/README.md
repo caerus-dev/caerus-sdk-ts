@@ -20,8 +20,13 @@ compared with a checksum.
 |---|---|
 | Repository | `caerus-dev/caerus-back` |
 | Path | `data-plane-service/src/main/proto/sre_service.proto` |
-| Commit | `4fb1d73f599278e06eef5f31598758b06534a9a0` |
-| SHA-256 | `682d05b9e96fffd12f490607aaf24fcfba0ba6a9a72f09e834e2344d47a7e6c9` |
+| Commit | `21ba0591e623917b994fcb9f48b8f896183adcc3` |
+| SHA-256 | `85a6f376d22ee15a7ac64959eec3410bb1b10bcc1596e9bd7d2e4a8288b753be` |
+
+> The repository's `.gitattributes` marks this file `-text` so git never rewrites its line
+> endings. Without that, a copy taken on Windows comes back with CRLF, the checksums stop
+> matching, and the check below reports drift on a file that is in fact identical. That
+> happened once already — an alarm that cries wolf is worse than no alarm.
 
 ## Checking it is still current
 
