@@ -30,7 +30,8 @@ export type EngineMethod =
   | 'extend'
   | 'getResource'
   | 'getResourcesByGroupKey'
-  | 'getResourceHolder';
+  | 'getResourceHolder'
+  | 'getResourceHoldersList';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type AnyCall = ServerUnaryCall<any, any>;
@@ -94,6 +95,7 @@ const METHODS: EngineMethod[] = [
   'getResource',
   'getResourcesByGroupKey',
   'getResourceHolder',
+  'getResourceHoldersList',
 ];
 
 export async function startFakeEngine(): Promise<FakeEngine> {
@@ -181,6 +183,8 @@ function defaultResponseFor(method: EngineMethod): unknown {
       return aHolderResponse();
     case 'getResourcesByGroupKey':
       return { resources: [aResourceResponse()], nextPage: false };
+    case 'getResourceHoldersList':
+      return { resourceHolders: [aHolderResponse()], nextPage: false };
     case 'release':
     case 'deleteResource':
       return {};

@@ -4,19 +4,24 @@ import { pooledHandle, unitaryHandle } from './internal/handles.js';
 import {
   assertUsable,
   encodeMetadata,
+  encodeStatus,
   toResource,
   toResourceHolder,
+  toResourceHolderPage,
   toResourcePage,
 } from './internal/mapping.js';
 import { Transport } from './internal/transport.js';
 import { resolveOptions, type CaerusClientOptions, type ResolvedClientOptions } from './options.js';
+import { GetResourceHoldersListRequest_SortDirection as WireSort } from './generated/sre_service.js';
 import type {
   ConfirmOptions,
   CreateResourceOptions,
   GetResourcesByGroupOptions,
+  ListResourceHoldersOptions,
   PooledResource,
   Resource,
   ResourceHolder,
+  ResourceHolderPage,
   ResourcePage,
   TakeOptions,
   UnitaryResource,
@@ -338,6 +343,31 @@ export class CaerusClient implements SharedResourceApi {
     );
 
     return toResourcePage(response);
+  }
+
+  /**
+   * Lists holders, newest first, narrowed by whatever you pass.
+   *
+   * With no options it walks every holder in the environment, which on a busy one is a
+   * lot: pass `resourceKey`, `status`, or both. `status: 'PENDING'` answers "what is
+   * being held right now", which is the question this usually gets asked for.
+   */
+  async listResourceHolders(
+    options: ListResourceHoldersOptions = {},
+  ): Promise<ResourceHolderPage> {
+    const response = await this.#transport.unary(
+      this.#transport.raw.getResourceHoldersList.bind(this.#transport.raw),
+      {
+        resourceKey: options.resourceKey,
+        page: options.page ?? 0,
+        pageSize: options.pageSize,
+        createdAtSortDirection:
+          options.sort === 'OLDEST_FIRST' ? WireSort.ASCENDING : WireSort.DESCENDING,
+        statusFilter: options.status === undefined ? undefined : encodeStatus(options.status),
+      },
+    );
+
+    return toResourceHolderPage(response);
   }
 
   /**

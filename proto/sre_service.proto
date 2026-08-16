@@ -24,6 +24,7 @@ service SharedResourceEngine {
   rpc GetResource(GetResourceRequest) returns (ResourceResponse);
   rpc GetResourcesByGroupKey(GetResourcesByGroupKeyRequest) returns (GetResourcesByGroupKeyResponse);
   rpc GetResourceHolder(GetResourceHolderRequest) returns (ResourceHolderResponse);
+  rpc GetResourceHoldersList(GetResourceHoldersListRequest) returns (GetResourceHoldersListResponse);
 }
 
 // --- MENSAJES DE PETICIÓN ---
@@ -88,6 +89,18 @@ message GetResourceHolderRequest {
   string resource_holder_id = 1;
 }
 
+message GetResourceHoldersListRequest {
+  optional string resource_key = 1;
+  int32 page = 2;
+  optional int32 page_size = 3;
+  enum SortDirection {
+    DESCENDING = 0;
+    ASCENDING = 1;
+  }
+  optional SortDirection created_at_sort_direction = 4;
+  optional ResourceHolderResponse.ResourceHolderStatus status_filter = 5;
+}
+
 // --- MENSAJES DE RESPUESTA ---
 
 message ResourceResponse {
@@ -102,6 +115,11 @@ message ResourceResponse {
 
 message GetResourcesByGroupKeyResponse {
   repeated ResourceResponse resources = 1;
+  bool next_page = 2;
+}
+
+message GetResourceHoldersListResponse {
+  repeated ResourceHolderResponse resource_holders = 1;
   bool next_page = 2;
 }
 

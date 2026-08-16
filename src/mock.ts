@@ -5,10 +5,12 @@ import type {
   ConfirmOptions,
   CreateResourceOptions,
   GetResourcesByGroupOptions,
+  ListResourceHoldersOptions,
   Metadata,
   PooledResource,
   Resource,
   ResourceHolder,
+  ResourceHolderPage,
   ResourcePage,
   TakeOptions,
   UnitaryResource,
@@ -37,7 +39,8 @@ export type MockMethod =
   | 'extend'
   | 'getResource'
   | 'getResourcesByGroup'
-  | 'getResourceHolder';
+  | 'getResourceHolder'
+  | 'listResourceHolders';
 
 export interface MockOptions {
   /** Stock to start with. Resources can also be created through the API. */
@@ -385,6 +388,35 @@ export class InMemoryCaerusClient implements SharedResourceApi {
 
     return {
       resources: slice.map((resource) => this.#toResource(resource)),
+      hasNextPage: start + pageSize < matching.length,
+    };
+  }
+
+  async listResourceHolders(
+    options: ListResourceHoldersOptions = {},
+  ): Promise<ResourceHolderPage> {
+    this.#guard('listResourceHolders');
+
+    // There is no created-at here, but a Map keeps insertion order, and holders are only
+    // ever appended — so insertion order *is* creation order.
+    let matching = [...this.#holders.values()];
+    if (options.resourceKey !== undefined) {
+      matching = matching.filter((held) => held.resourceKey === options.resourceKey);
+    }
+    if (options.status !== undefined) {
+      matching = matching.filter((held) => held.status === options.status);
+    }
+    if (options.sort !== 'OLDEST_FIRST') {
+      matching.reverse();
+    }
+
+    const page = options.page ?? 0;
+    const pageSize = options.pageSize ?? this.#defaultPageSize;
+    const start = page * pageSize;
+    const slice = matching.slice(start, start + pageSize);
+
+    return {
+      holders: slice.map((held) => this.#toHolder(held)),
       hasNextPage: start + pageSize < matching.length,
     };
   }

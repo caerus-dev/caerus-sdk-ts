@@ -381,4 +381,62 @@ describe('the in-memory client', () => {
       },
     );
   });
+
+  describe('listResourceHolders in mock', () => {
+    async function withThreeHolders() {
+      const caerus = aMock(10);
+      const first = await caerus.pooled('seat_A12').take();
+      const second = await caerus.pooled('seat_A12').take();
+      const third = await caerus.pooled('seat_A12').take();
+      await caerus.confirm(second.id);
+      return { caerus, first, second, third };
+    }
+
+    it('lists newest first by default', async () => {
+      const { caerus, first, third } = await withThreeHolders();
+
+      const page = await caerus.listResourceHolders();
+
+      expect(page.holders).toHaveLength(3);
+      expect(page.holders[0]!.id).toBe(third.id);
+      expect(page.holders[2]!.id).toBe(first.id);
+    });
+
+    it('can be asked for the other order', async () => {
+      const { caerus, first } = await withThreeHolders();
+
+      const page = await caerus.listResourceHolders({ sort: 'OLDEST_FIRST' });
+
+      expect(page.holders[0]!.id).toBe(first.id);
+    });
+
+    it('narrows by status', async () => {
+      const { caerus, second } = await withThreeHolders();
+
+      const confirmed = await caerus.listResourceHolders({ status: 'CONFIRMED' });
+
+      expect(confirmed.holders.map((holder) => holder.id)).toEqual([second.id]);
+    });
+
+    it('narrows by resource', async () => {
+      const { caerus } = await withThreeHolders();
+
+      expect((await caerus.listResourceHolders({ resourceKey: 'seat_A12' })).holders).toHaveLength(
+        3,
+      );
+      expect((await caerus.listResourceHolders({ resourceKey: 'otra' })).holders).toHaveLength(0);
+    });
+
+    it('pages, and says when there is more', async () => {
+      const { caerus } = await withThreeHolders();
+
+      const first = await caerus.listResourceHolders({ pageSize: 2 });
+      expect(first.holders).toHaveLength(2);
+      expect(first.hasNextPage).toBe(true);
+
+      const second = await caerus.listResourceHolders({ pageSize: 2, page: 1 });
+      expect(second.holders).toHaveLength(1);
+      expect(second.hasNextPage).toBe(false);
+    });
+  });
 });

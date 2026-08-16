@@ -326,6 +326,48 @@ describe('the business methods', () => {
       expect(engine.lastRequest.page).toBe(0);
     });
 
+    it('lists holders and says whether there is another page', async () => {
+      engine.on('getResourceHoldersList', (_call, callback) =>
+        callback(null, {
+          resourceHolders: [
+            aHolderResponse({ holderId: 'hld-1' }),
+            aHolderResponse({ holderId: 'hld-2' }),
+          ],
+          nextPage: true,
+        }),
+      );
+
+      const page = await caerus.listResourceHolders({
+        resourceKey: 'seat_A12',
+        status: 'PENDING',
+        page: 1,
+        pageSize: 5,
+      });
+
+      expect(engine.lastRequest).toMatchObject({
+        resourceKey: 'seat_A12',
+        page: 1,
+        pageSize: 5,
+        statusFilter: 0, // PENDING on the wire
+      });
+      expect(page.holders.map((holder) => holder.id)).toEqual(['hld-1', 'hld-2']);
+      expect(page.hasNextPage).toBe(true);
+    });
+
+    it('lists newest first unless asked for the other order', async () => {
+      await caerus.listResourceHolders();
+      expect(engine.lastRequest).toMatchObject({ page: 0, createdAtSortDirection: 0 }); // DESCENDING
+
+      await caerus.listResourceHolders({ sort: 'OLDEST_FIRST' });
+      expect(engine.lastRequest.createdAtSortDirection).toBe(1); // ASCENDING
+    });
+
+    it('leaves the status filter out when none is asked for', async () => {
+      await caerus.listResourceHolders({ resourceKey: 'seat_A12' });
+
+      expect(engine.lastRequest.statusFilter).toBeUndefined();
+    });
+
     it('reads a holder', async () => {
       engine.on('getResourceHolder', (_call, callback) =>
         callback(null, aHolderResponse({ holderId: 'hld-7', status: 1 })),

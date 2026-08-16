@@ -2,9 +2,11 @@ import type {
   ConfirmOptions,
   CreateResourceOptions,
   GetResourcesByGroupOptions,
+  ListResourceHoldersOptions,
   PooledResource,
   Resource,
   ResourceHolder,
+  ResourceHolderPage,
   ResourcePage,
   UnitaryResource,
   UpdateResourceOptions,
@@ -92,6 +94,14 @@ export interface SharedResourceApi {
     groupKey: string,
     options?: GetResourcesByGroupOptions,
   ): Promise<ResourcePage>;
+
+  /**
+   * Reads one page of holders, newest first, narrowed by resource and state.
+   *
+   * Named apart from `getResourceHolder` on purpose: one letter of difference between a
+   * method that fetches one and a method that lists many is a mistake waiting to happen.
+   */
+  listResourceHolders(options?: ListResourceHoldersOptions): Promise<ResourceHolderPage>;
 
   /** Releases whatever the implementation is holding on to. */
   close(): void;

@@ -19,6 +19,7 @@ describe('the client generated from sre_service.proto', () => {
       'extend',
       'getResource',
       'getResourceHolder',
+      'getResourceHoldersList',
       'getResourcesByGroupKey',
       'release',
       'take',
