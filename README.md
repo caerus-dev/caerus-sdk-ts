@@ -269,6 +269,20 @@ pass `resourceKey`, `status`, or both. `sort: 'OLDEST_FIRST'` flips the order.
 Note the name: `getResourceHolder` fetches one by id, `listResourceHolders` searches. One
 letter of difference between those two would be a mistake waiting to happen.
 
+> ⚠️ **This one reads the persisted view, not the engine**, and two things follow.
+>
+> **It lags.** A holder you just took takes seconds to appear — measured between 4 and 15
+> against a local engine. `getResourceHolder` answers about that same holder immediately.
+> Taking something and listing it in the next line will show you nothing; if you need to
+> see it, poll with a deadline.
+>
+> **The order is by last write, not by when the hold was taken.** Confirming or extending
+> a holder rewrites its row, which moves it to the front of `NEWEST_FIRST`. Among holders
+> nobody has touched since, the order is exactly what you would expect.
+>
+> Neither is something this package can paper over: `getResourceHolder` and `take` talk to
+> the engine, this talks to the database behind it.
+
 ---
 
 ## Errors
