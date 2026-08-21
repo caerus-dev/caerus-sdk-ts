@@ -60,6 +60,11 @@ no, no se sabe.** Puede haber un holder creado del que nunca te enteraste.
 Por eso importa la clave de idempotencia: reintentar con la misma clave devuelve el
 holder que ya existía en vez de crear un segundo.
 
+Ojo con qué holder es ese: el motor te devuelve el que corresponda a la clave, en el
+estado en que esté ahora, así que puede venir `RELEASED` o `EXPIRED` con respuesta
+exitosa. Conviene mirar el `status`. Está explicado en
+[conceptos.md](conceptos.md#idempotencia).
+
 ## El SDK no reintenta
 
 Ninguna operación se reintenta sola, ni siquiera las de lectura. Es deliberado: un
