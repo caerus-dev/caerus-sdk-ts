@@ -211,6 +211,7 @@ More in `examples/02-holders.ts`, in the repository.
   amount: 1,
   expiresAt: Date,                       // a real Date, not epoch seconds
   metadata: { orderId: 'ord_1234' },     // an object, not a JSON string
+  createdAt: Date,                       // when the engine took it; absent on older engines
 }
 ```
 
@@ -224,9 +225,13 @@ More in `examples/02-holders.ts`, in the repository.
 | `QUEUED` | No stock; the engine parked the request. **Nothing is held yet** |
 | `EXPIRED` | The hold did not survive — it timed out and stock was released |
 
-`take` throws on `EXPIRED` rather than handing back something that looks successful.
-`getResourceHolder` returns it: asking what state something is in and being told `EXPIRED` is
-an answer, not a failure.
+`take` and `extend` throw on `CONFIRMED`, `RELEASED` and `EXPIRED` rather than handing back
+something that looks successful, and `confirm` throws on anything but `CONFIRMED`. The way a
+finished holder reaches you is an idempotency key whose original holder has since ended: the
+engine replays it, correctly, and you are still holding nothing.
+
+Queries are exempt. `getResourceHolder` returns whatever state it finds, because asking what
+state something is in and being told `RELEASED` is an answer, not a failure.
 
 ### Inventory
 

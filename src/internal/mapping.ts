@@ -67,6 +67,16 @@ export function decodeExpiresAt(epochSeconds: number): Date {
   return new Date(epochSeconds * 1000);
 }
 
+/**
+ * Epoch milliseconds on the wire, a Date in the API, and absent when the engine
+ * did not send one: proto3 turns a missing int64 into a zero, and a zero here
+ * would otherwise read as January 1970 rather than as "unknown".
+ */
+export function decodeTimestampMs(epochMs: number | undefined): Date | undefined {
+  if (epochMs === undefined || epochMs === 0) return undefined;
+  return new Date(epochMs);
+}
+
 const STATUS_BY_WIRE: Record<number, ResourceHolderStatus> = {
   [WireStatus.PENDING]: 'PENDING',
   [WireStatus.CONFIRMED]: 'CONFIRMED',
@@ -109,6 +119,7 @@ export function toResourceHolder(response: ResourceHolderResponse): ResourceHold
     amount: response.amount,
     expiresAt: decodeExpiresAt(response.expiresAt),
     metadata: decodeMetadata(response.metadata, context),
+    createdAt: decodeTimestampMs(response.createdAtMs),
   };
 }
 
@@ -121,6 +132,8 @@ export function toResource(response: ResourceResponse): Resource {
     pendingCount: response.pendingCount,
     groupKey: response.groupKey === '' ? undefined : response.groupKey,
     metadata: decodeMetadata(response.metadata, `resource ${response.key}`),
+    createdAt: decodeTimestampMs(response.createdAtMs),
+    updatedAt: decodeTimestampMs(response.updatedAtMs),
   };
 }
 
@@ -141,16 +154,26 @@ export function toResourceHolderPage(
 }
 
 /**
- * A holder that came back EXPIRED is not one you can use. Handing it over as if the
- * call had worked is the trap this guards: a caller who checks only for a thrown error
- * would carry on believing they hold the seat.
+ * A holder that came back in a state the operation cannot produce is not one you can
+ * use. Handing it over as if the call had worked is the trap this guards: a caller who
+ * checks only for a thrown error would carry on believing they hold the seat.
  *
- * Queries are exempt — asking what state a holder is in and being told EXPIRED is
- * an answer, not a failure.
+ * Which states count depends on the call, which is why they are passed in: a CONFIRMED
+ * holder is the whole point of confirm and a failure coming back from take.
+ *
+ * The states that surprise people arrive through an idempotency key whose original
+ * holder has since finished. The engine is right to replay it — same key, same holder —
+ * and the caller is still not holding anything.
+ *
+ * Queries are exempt: asking what state a holder is in and being told RELEASED is an
+ * answer, not a failure.
  */
-export function assertUsable(holder: ResourceHolder): ResourceHolder {
-  if (holder.status === 'EXPIRED') {
-    throw new ConflictError(`Caerus could not hold ${holder.id}: its status is EXPIRED.`);
-  }
-  return holder;
+export function assertUsable(
+  holder: ResourceHolder,
+  usable: readonly ResourceHolderStatus[],
+): ResourceHolder {
+  if (usable.includes(holder.status)) return holder;
+  throw new ConflictError(
+    `Caerus returned holder ${holder.id} as ${holder.status}, which this call cannot use.`,
+  );
 }

@@ -233,7 +233,7 @@ export class CaerusClient implements SharedResourceApi {
       },
     );
 
-    return assertUsable(toResourceHolder(response));
+    return assertUsable(toResourceHolder(response), ['PENDING', 'QUEUED']);
   }
 
   // --- Holders -------------------------------------------------------------------
@@ -256,7 +256,7 @@ export class CaerusClient implements SharedResourceApi {
       },
     );
 
-    return assertUsable(toResourceHolder(response));
+    return assertUsable(toResourceHolder(response), ['CONFIRMED']);
   }
 
   /**
@@ -296,7 +296,7 @@ export class CaerusClient implements SharedResourceApi {
       { resourceHolderId, extraMs },
     );
 
-    return assertUsable(toResourceHolder(response));
+    return assertUsable(toResourceHolder(response), ['PENDING', 'QUEUED']);
   }
 
   /**

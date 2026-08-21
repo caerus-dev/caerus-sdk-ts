@@ -40,6 +40,7 @@ export interface ResourceHolder {
    */
   expiresAt: Date;
   metadata?: Metadata;
+  createdAt?: Date;
 }
 
 /** Something with stock that holders are taken from. */
@@ -55,6 +56,8 @@ export interface Resource {
   pendingCount: number;
   groupKey?: string;
   metadata?: Metadata;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 /** One page of resources sharing a group key. */

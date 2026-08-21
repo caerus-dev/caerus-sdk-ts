@@ -111,6 +111,8 @@ message ResourceResponse {
   int32 pending_count = 5;
   optional string group_key = 6;
   optional string metadata = 7;
+  int64 created_at_ms = 8;
+  int64 updated_at_ms = 9;
 }
 
 message GetResourcesByGroupKeyResponse {
@@ -137,4 +139,5 @@ message ResourceHolderResponse {
   int32 amount = 4;
   int64 expires_at = 5;
   optional string metadata = 6;
+  int64 created_at_ms = 7;
 }

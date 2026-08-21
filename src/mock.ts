@@ -59,6 +59,8 @@ interface StoredResource {
   pendingCount: number;
   groupKey?: string;
   metadata?: Metadata;
+  createdAtMs: number;
+  updatedAtMs: number;
 }
 
 interface StoredHolder {
@@ -69,6 +71,7 @@ interface StoredHolder {
   status: ResourceHolderStatusValue;
   expiresAtSeconds: number;
   metadata?: Metadata;
+  createdAtMs: number;
 }
 
 type ResourceHolderStatusValue = ResourceHolder['status'];
@@ -129,6 +132,8 @@ export class InMemoryCaerusClient implements SharedResourceApi {
         pendingCount: 0,
         groupKey: seed.groupKey,
         metadata: seed.metadata,
+        createdAtMs: this.#nowSeconds * 1000,
+        updatedAtMs: this.#nowSeconds * 1000,
       });
     }
   }
@@ -235,6 +240,8 @@ export class InMemoryCaerusClient implements SharedResourceApi {
       pendingCount: 0,
       groupKey: options.groupKey,
       metadata: options.metadata,
+      createdAtMs: this.#nowSeconds * 1000,
+      updatedAtMs: this.#nowSeconds * 1000,
     };
     this.#resources.set(key, resource);
 
@@ -265,6 +272,7 @@ export class InMemoryCaerusClient implements SharedResourceApi {
     if (options.metadata !== undefined) {
       resource.metadata = options.metadata;
     }
+    resource.updatedAtMs = this.#nowSeconds * 1000;
 
     return this.#toResource(resource);
   }
@@ -437,7 +445,15 @@ export class InMemoryCaerusClient implements SharedResourceApi {
     if (options.idempotencyKey !== undefined) {
       const known = this.#idempotency.get(options.idempotencyKey);
       if (known !== undefined) {
-        return this.#toHolder(this.#requireHolder(known));
+        // The engine replays the holder the key produced, whatever state it reached
+        // since. The real client refuses to hand back a finished one, and so does this.
+        const replayed = this.#requireHolder(known);
+        if (replayed.status !== 'PENDING' && replayed.status !== 'QUEUED') {
+          throw new ConflictError(
+            `Caerus returned holder ${replayed.id} as ${replayed.status}, which this call cannot use.`,
+          );
+        }
+        return this.#toHolder(replayed);
       }
     }
 
@@ -459,6 +475,7 @@ export class InMemoryCaerusClient implements SharedResourceApi {
       status: 'PENDING',
       expiresAtSeconds: this.#nowSeconds + (options.ttlSeconds ?? this.#defaultTtlSeconds),
       metadata: options.metadata,
+      createdAtMs: this.#nowSeconds * 1000,
     };
     this.#holders.set(holder.id, holder);
 
@@ -519,6 +536,8 @@ export class InMemoryCaerusClient implements SharedResourceApi {
       pendingCount: resource.pendingCount,
       groupKey: resource.groupKey,
       metadata: resource.metadata,
+      createdAt: new Date(resource.createdAtMs),
+      updatedAt: new Date(resource.updatedAtMs),
     };
   }
 
@@ -530,6 +549,7 @@ export class InMemoryCaerusClient implements SharedResourceApi {
       amount: holder.amount,
       expiresAt: new Date(holder.expiresAtSeconds * 1000),
       metadata: holder.metadata,
+      createdAt: new Date(holder.createdAtMs),
     };
   }
 
