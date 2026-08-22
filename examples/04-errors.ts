@@ -9,6 +9,8 @@ import {
   CaerusClient,
   CaerusError,
   ConflictError,
+  HolderNotActiveError,
+  OutOfStockError,
   ResourceNotFoundError,
   TimeoutError,
   ValidationError,
@@ -35,11 +37,18 @@ export async function buyWithGoodErrors(): Promise<string> {
       throw new Error('That seat does not exist');
     }
 
+    if (error instanceof OutOfStockError) {
+      throw new Error('That seat was taken by somebody else');
+    }
+
+    if (error instanceof HolderNotActiveError) {
+      // The hold ended before this call: released, confirmed or expired.
+      throw new Error('Your hold is no longer valid — start again');
+    }
+
     if (error instanceof ConflictError) {
-      // Careful: this is also what a sold-out seat looks like. The engine reports "no
-      // stock" and "this holder is in the wrong state" with the same code, so the two
-      // cannot be told apart without reading the message. See the README.
-      throw new Error('That seat is no longer available');
+      // Any other state the engine refuses. error.reason names it.
+      throw new Error(`That seat is no longer available (${error.reason ?? 'unknown'})`);
     }
 
     if (error instanceof ValidationError) {

@@ -7,3 +7,5 @@ src/generated/
 
 # Produced from package.json, for the same reason: one source of truth.
 src/version.ts
+
+.idea/

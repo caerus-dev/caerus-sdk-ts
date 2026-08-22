@@ -1,5 +1,13 @@
 import type { SharedResourceApi } from './api.js';
-import { CaerusError, ConflictError, ResourceNotFoundError, ValidationError } from './errors.js';
+import {
+  CaerusError,
+  ConflictError,
+  HolderNotActiveError,
+  OutOfStockError,
+  ResourceHasActiveHoldsError,
+  ResourceNotFoundError,
+  ValidationError,
+} from './errors.js';
 import { pooledHandle, unitaryHandle } from './internal/handles.js';
 import type {
   ConfirmOptions,
@@ -184,7 +192,7 @@ export class InMemoryCaerusClient implements SharedResourceApi {
   expire(resourceHolderId: string): void {
     const holder = this.#requireHolder(resourceHolderId);
     if (holder.status !== 'PENDING') {
-      throw new ConflictError(`Holder ${resourceHolderId} is ${holder.status} and cannot expire.`);
+      throw new HolderNotActiveError(`Holder ${resourceHolderId} is ${holder.status} and cannot expire.`);
     }
     this.#expire(holder);
   }
@@ -284,7 +292,7 @@ export class InMemoryCaerusClient implements SharedResourceApi {
     const resource = this.#requireResource(key);
 
     if (resource.pendingCount > 0) {
-      throw new ConflictError(
+      throw new ResourceHasActiveHoldsError(
         `Cannot delete resource with active holds: ${key}`,
       );
     }
@@ -320,7 +328,7 @@ export class InMemoryCaerusClient implements SharedResourceApi {
     const holder = this.#requireHolder(resourceHolderId);
 
     if (holder.status !== 'PENDING') {
-      throw new ConflictError(
+      throw new HolderNotActiveError(
         `Holder ${resourceHolderId} is ${holder.status} and cannot be confirmed.`,
       );
     }
@@ -341,7 +349,7 @@ export class InMemoryCaerusClient implements SharedResourceApi {
     const holder = this.#requireHolder(resourceHolderId);
 
     if (holder.status !== 'PENDING') {
-      throw new ConflictError(
+      throw new HolderNotActiveError(
         `Holder ${resourceHolderId} is ${holder.status} and cannot be released.`,
       );
     }
@@ -355,7 +363,7 @@ export class InMemoryCaerusClient implements SharedResourceApi {
     const holder = this.#requireHolder(resourceHolderId);
 
     if (holder.status !== 'PENDING') {
-      throw new ConflictError(
+      throw new HolderNotActiveError(
         `Holder ${resourceHolderId} is ${holder.status} and cannot be extended.`,
       );
     }
@@ -449,7 +457,7 @@ export class InMemoryCaerusClient implements SharedResourceApi {
         // since. The real client refuses to hand back a finished one, and so does this.
         const replayed = this.#requireHolder(known);
         if (replayed.status !== 'PENDING' && replayed.status !== 'QUEUED') {
-          throw new ConflictError(
+          throw new HolderNotActiveError(
             `Caerus returned holder ${replayed.id} as ${replayed.status}, which this call cannot use.`,
           );
         }
@@ -461,7 +469,7 @@ export class InMemoryCaerusClient implements SharedResourceApi {
     if (resource.availableAmount < amount) {
       // The same type and wording the engine produces. A mock that reported this
       // differently would teach a lesson that only breaks in production.
-      throw new ConflictError(`Out of stock for resource: ${resourceKey}`);
+      throw new OutOfStockError(`Out of stock for resource: ${resourceKey}`);
     }
 
     resource.availableAmount -= amount;

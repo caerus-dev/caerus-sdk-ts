@@ -304,15 +304,28 @@ message the engine sent.
 | `TimeoutError` | `TIMEOUT` | The call ran past its deadline |
 | `CaerusError` | `UNKNOWN` | Anything else |
 
+`ConflictError` covers several outcomes that need different answers, so it has subclasses:
+
+| Subclass | When |
+|---|---|
+| `OutOfStockError` | No units left |
+| `HolderNotActiveError` | The holder is `RELEASED`, `CONFIRMED` or `EXPIRED` |
+| `ResourceHasActiveHoldsError` | Cannot delete: somebody is holding it |
+| `ResourceHasQueuedRequestsError` | Cannot delete: somebody is queued on it |
+
 ```typescript
 try {
-  await caerus.unitary('seat_A12').take();
+  await caerus.unitary('seat_A12').take({ idempotencyKey: key });
 } catch (error) {
-  if (error instanceof ConflictError) {
-    // Sold out, or the holder was in the wrong state — see Known limitations
-  }
+  if (error instanceof OutOfStockError) return 'somebody got there first';
+  if (error instanceof HolderNotActiveError) return 'your hold ended — start again';
+  throw error;
 }
 ```
+
+All of them are still `ConflictError`, so catching that keeps working. Every error also
+carries `error.reason`, the engine's own code as a string, for the cases without a class
+of their own. Never read the message text: it is written for people and it can change.
 
 More in `examples/04-errors.ts`, in the repository.
 
@@ -382,14 +395,10 @@ same seat, an SDK that could cause that would contradict the product.
 **What it does instead:** every call has a deadline, and `idempotencyKey` lets you retry
 a `take` safely yourself. Read-only calls are harmless and may be retried freely.
 
-### "Sold out" arrives as a generic conflict
+### Locks are not covered yet
 
-The engine reports no-stock and every other invalid state with the same code, so both
-become `ConflictError`. Telling them apart means reading the message text, which will
-break the first time the wording changes.
-
-**In the meantime:** check the stock with `getResource` before deciding what to tell your
-customer, rather than parsing the message.
+The engine speaks a second protocol for distributed locks. This package does not, so
+`BeginTransaction`, `AcquireLock` and the rest are out of reach from TypeScript for now.
 
 ### Slow work can outlive its own hold
 
@@ -409,7 +418,7 @@ average, and by calling `extend` when you are about to run out.
 It is faithful to how we understand Caerus, which is not the same as being faithful to
 Caerus. Specifically:
 
-- **`QUEUED` is not simulated.** Out of stock always throws `ConflictError`, like the
+- **`QUEUED` is not simulated.** Out of stock always throws `OutOfStockError`, like the
   `FAIL` strategy. Templates that queue cannot be exercised against it
 - **Template rules are not enforced.** A single-unit template requiring exactly 1, or a
   template that rejects metadata, will be accepted here and refused by the engine
