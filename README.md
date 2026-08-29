@@ -461,6 +461,62 @@ together, the error mapping, and how to run it against a real engine. It is writ
 Spanish, for the teams building on Caerus. If you are going to change this package,
 [`AGENTS.md`](AGENTS.md) is the place to start.
 
+## Webhooks
+
+Verify and handle asynchronous event notifications from Caerus safely.
+
+The payload structures (`CaerusEvent`) use TypeScript Discriminated Unions for exhaustive type safety and autocompletion based on `eventType`. The SDK does not run an HTTP server itself; it integrates with your existing framework (Express, Fastify, Next.js, or raw Node.js `http`).
+
+> [!IMPORTANT]
+> Always pass the unmodified raw body (`Buffer` or raw `string`). Parsing JSON prior to signature verification will alter formatting and cause cryptographic validation to fail.
+
+### Express Example
+
+```typescript
+import express from 'express';
+import { CaerusClient, CaerusSignatureError, CaerusWebhookExpiredError } from '@caerus-dev/sdk';
+
+const app = express();
+const caerus = new CaerusClient({ endpoint: 'caerus.example.com:9090', apiKey: 'sk_live_...' });
+
+// Raw body parser required for cryptographic verification
+app.post('/webhooks', express.raw({ type: 'application/json' }), (req, res) => {
+  const sig = req.headers['caerus-signature'] as string;
+  const secret = process.env.CAERUS_WEBHOOK_SECRET!;
+
+  let event;
+  try {
+    event = caerus.webhooks.constructEvent(req.body, sig, secret);
+  } catch (err) {
+    if (err instanceof CaerusSignatureError || err instanceof CaerusWebhookExpiredError) {
+      return res.status(400).send(`Invalid signature: ${err.message}`);
+    }
+    return res.status(400).send(`Error: ${(err as Error).message}`);
+  }
+
+  // Exhaustive typing per eventType:
+  switch (event.eventType) {
+    case 'resource.taken':
+      console.log(`Resource taken -> Holder ID: ${event.data.holderId}`);
+      break;
+
+    case 'lock.deadlock_detected':
+      console.log(`Deadlock victim: ${event.data.victimTransactionId}`);
+      break;
+
+    default:
+      console.log(`Unhandled event: ${event.eventType}`);
+  }
+
+  res.json({ received: true });
+});
+```
+
+More in `examples/06-webhooks.ts` and [`docs/webhooks.md`](docs/webhooks.md).
+
+---
+
 ## Licence
 
 MIT
+

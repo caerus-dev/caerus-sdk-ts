@@ -1,4 +1,5 @@
 import type { SharedResourceApi } from './api.js';
+import { Webhooks } from './webhooks/index.js';
 import {
   CaerusError,
   ConflictError,
@@ -116,6 +117,8 @@ const DEFAULT_PAGE_SIZE = 25;
  * deterministic part. Time is an input here, like the stock.
  */
 export class InMemoryCaerusClient implements SharedResourceApi {
+  readonly webhooks = new Webhooks();
+
   readonly #resources = new Map<string, StoredResource>();
   readonly #holders = new Map<string, StoredHolder>();
   readonly #idempotency = new Map<string, string>();
