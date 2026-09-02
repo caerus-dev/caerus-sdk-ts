@@ -9,6 +9,8 @@ import type {
   AcquireLockOptions,
   LockStatusResponse,
   TransactionStatusResponse,
+  TransactionOptions,
+  TransactionContext,
 } from './dls-types';
 import {
   type DlsClientOptions,
@@ -41,6 +43,57 @@ export class DlsClient implements DlsApi {
     };
   }
 
+  async withTransaction<T>(
+    callback: (tx: TransactionContext) => Promise<T>,
+    options?: TransactionOptions
+  ): Promise<T> {
+    const tx = await this.beginTransaction({ timeoutMs: options?.timeoutMs });
+    const txId = tx.transactionId;
+    let isClosed = false;
+    let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+    const autoRenew = options?.autoRenew ?? true;
+    if (autoRenew) {
+      const intervalMs = Math.max(1000, (options?.timeoutMs || 10000) / 2);
+      heartbeatTimer = setInterval(() => {
+        if (!isClosed) {
+          this.renewTransaction(txId, options?.timeoutMs || 10000).catch(() => {
+            // Silently fail heartbeats. If it completely expires, the main logic will eventually fail or Caerus will clear it.
+          });
+        }
+      }, intervalMs);
+    }
+
+    const context: TransactionContext = {
+      transactionId: txId,
+      acquireLock: async (namespace, lockKey, mode, acquireOpts) => {
+        if (isClosed) {
+          throw new Error('Transaction context already closed');
+        }
+        const signal = acquireOpts?.signal || options?.signal;
+        const mergedOpts = { ...acquireOpts, signal };
+        return this.acquireLock(namespace, lockKey, txId, mode, mergedOpts);
+      },
+      renewTransaction: async (extraMs) => {
+        if (isClosed) {
+          throw new Error('Transaction context already closed');
+        }
+        return this.renewTransaction(txId, extraMs);
+      }
+    };
+
+    try {
+      return await callback(context);
+    } finally {
+      isClosed = true;
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+      }
+      // Guarantee resource release, ignoring errors if backend already cleaned up
+      await this.releaseTransactionLocks(txId).catch(() => {});
+    }
+  }
+
   async acquireLock(
     namespace: string,
     lockKey: string,
@@ -56,7 +109,10 @@ export class DlsClient implements DlsApi {
       transactionId,
     };
 
-    const response = await this.#transport.acquireLockStream(request);
+    const response = await this.#transport.acquireLockStream(request, {
+      timeoutMs: options?.timeoutMs,
+      signal: options?.signal,
+    });
 
     return {
       lockId: response.lockId,

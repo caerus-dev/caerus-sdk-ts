@@ -75,24 +75,57 @@ export class DlsTransport {
     });
   }
 
-  acquireLockStream(request: AcquireLockRequest): Promise<AcquireLockResponse> {
+  acquireLockStream(
+    request: AcquireLockRequest,
+    options?: { timeoutMs?: number; signal?: AbortSignal }
+  ): Promise<AcquireLockResponse> {
     if (this.#closed) {
       return Promise.reject(toDlsError(new Error('This DlsClient has been closed')));
     }
 
+    if (options?.signal?.aborted) {
+      return Promise.reject(toDlsError(new Error('AcquireLock aborted by user')));
+    }
+
     return new Promise<AcquireLockResponse>((resolve, reject) => {
+      const callOpts = options?.timeoutMs
+        ? { deadline: new Date(Date.now() + options.timeoutMs) }
+        : this.callOptions();
+
       const stream: ClientReadableStream<AcquireLockResponse> = this.#client.acquireLock(
         request,
         this.buildMetadata(),
-        this.callOptions(),
+        callOpts,
       );
 
       let terminalResponseReceived = false;
 
+      const cleanupSignal = () => {
+        if (options?.signal) {
+          options.signal.removeEventListener('abort', onAbort);
+        }
+      };
+
+      const onAbort = () => {
+        if (!terminalResponseReceived) {
+          terminalResponseReceived = true;
+          stream.cancel();
+          cleanupSignal();
+          reject(toDlsError(new Error('AcquireLock aborted by user')));
+        }
+      };
+
+      if (options?.signal) {
+        options.signal.addEventListener('abort', onAbort);
+      }
+
       stream.on('data', (response: AcquireLockResponse) => {
         if (response.status === 1 /* ACQUIRED */ || response.status === 2 /* DENIED */) {
           terminalResponseReceived = true;
+          cleanupSignal();
           resolve(response);
+          // Fundamental para evitar fugas de memoria y sockets colgados:
+          stream.cancel();
         } else if (response.status === 3 /* QUEUED */) {
           // QUEUED, keep waiting
         } else {
@@ -103,12 +136,14 @@ export class DlsTransport {
 
       stream.on('error', (error: ServiceError) => {
         if (!terminalResponseReceived) {
+          cleanupSignal();
           reject(toDlsError(error));
         }
       });
 
       stream.on('end', () => {
         if (!terminalResponseReceived) {
+          cleanupSignal();
           reject(toDlsError(new Error('Stream ended without terminal status')));
         }
       });

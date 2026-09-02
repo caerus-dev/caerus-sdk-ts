@@ -93,7 +93,7 @@ describe('DlsClient methods', () => {
     expect(status.isHeld).toBe(true);
     expect(status.currentMode).toBe('EXCLUSIVE');
     expect(status.activeHolders).toHaveLength(1);
-    expect(status.activeHolders[0].lockId).toBe('l-1');
+    expect(status.activeHolders[0]!.lockId).toBe('l-1');
   });
 
   it('getTransactionStatus correctly maps response', async () => {
@@ -110,7 +110,7 @@ describe('DlsClient methods', () => {
     expect(status.status).toBe('ABORTED');
     expect(status.abortReason).toBe('timeout');
     expect(status.locks).toHaveLength(1);
-    expect(status.locks[0].requestedMode).toBe('EXCLUSIVE');
-    expect(status.locks[0].status).toBe('ACQUIRED');
+    expect(status.locks[0]!.requestedMode).toBe('EXCLUSIVE');
+    expect(status.locks[0]!.status).toBe('ACQUIRED');
   });
 });

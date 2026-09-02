@@ -6,9 +6,21 @@ import type {
   AcquireLockOptions,
   LockStatusResponse,
   TransactionStatusResponse,
+  TransactionOptions,
+  TransactionContext,
 } from './dls-types';
 
 export interface DlsApi {
+  /**
+   * Executes a callback within a managed transaction scope.
+   * Ensures all locks are automatically released when the callback completes or throws.
+   * Can optionally perform auto-renewal (heartbeat) and handle cancellation via AbortSignal.
+   */
+  withTransaction<T>(
+    callback: (tx: TransactionContext) => Promise<T>,
+    options?: TransactionOptions
+  ): Promise<T>;
+
   /**
    * Begins a transaction and returns a unique transaction_id.
    * A transaction serves as the boundary for holding multiple locks.

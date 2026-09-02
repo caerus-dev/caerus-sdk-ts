@@ -44,6 +44,52 @@ export class InMemoryDlsClient implements DlsApi {
     return { transactionId };
   }
 
+  async withTransaction<T>(
+    callback: (tx: import('./dls-types').TransactionContext) => Promise<T>,
+    options?: import('./dls-types').TransactionOptions
+  ): Promise<T> {
+    const tx = await this.beginTransaction({ timeoutMs: options?.timeoutMs });
+    const txId = tx.transactionId;
+    let isClosed = false;
+    let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+    const autoRenew = options?.autoRenew ?? true;
+    if (autoRenew) {
+      const intervalMs = Math.max(1000, (options?.timeoutMs || 10000) / 2);
+      heartbeatTimer = setInterval(() => {
+        if (!isClosed) {
+          this.renewTransaction(txId, options?.timeoutMs || 10000).catch(() => {});
+        }
+      }, intervalMs);
+    }
+
+    const context: import('./dls-types').TransactionContext = {
+      transactionId: txId,
+      acquireLock: async (namespace, lockKey, mode, acquireOpts) => {
+        if (isClosed) {
+          throw new Error('Transaction context already closed');
+        }
+        const signal = acquireOpts?.signal || options?.signal;
+        const mergedOpts = { ...acquireOpts, signal };
+        return this.acquireLock(namespace, lockKey, txId, mode, mergedOpts);
+      },
+      renewTransaction: async (extraMs) => {
+        if (isClosed) {
+          throw new Error('Transaction context already closed');
+        }
+        return this.renewTransaction(txId, extraMs);
+      }
+    };
+
+    try {
+      return await callback(context);
+    } finally {
+      isClosed = true;
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      await this.releaseTransactionLocks(txId).catch(() => {});
+    }
+  }
+
   async acquireLock(
     namespace: string,
     lockKey: string,
@@ -51,6 +97,10 @@ export class InMemoryDlsClient implements DlsApi {
     mode: LockMode,
     options?: AcquireLockOptions
   ): Promise<LockHolder> {
+    if (options?.signal?.aborted) {
+      throw new Error('AcquireLock aborted by user');
+    }
+
     if (!this.activeTransactions.has(transactionId)) {
       throw new DlsNotFoundError('Transaction not found or expired');
     }

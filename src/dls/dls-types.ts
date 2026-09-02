@@ -45,4 +45,23 @@ export interface BeginTransactionOptions {
 
 export interface AcquireLockOptions {
   idempotencyKey?: string;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
+export interface TransactionOptions {
+  timeoutMs?: number;
+  autoRenew?: boolean;
+  signal?: AbortSignal;
+}
+
+export interface TransactionContext {
+  readonly transactionId: string;
+  acquireLock(
+    namespace: string,
+    lockKey: string,
+    mode: LockMode,
+    options?: AcquireLockOptions,
+  ): Promise<LockHolder>;
+  renewTransaction(extraMs: number): Promise<Transaction>;
 }
