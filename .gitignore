@@ -9,3 +9,5 @@ src/generated/
 src/version.ts
 
 .idea/
+.env
+.env.*

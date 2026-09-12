@@ -12,6 +12,7 @@ import {
 } from './internal/mapping.js';
 import { Transport } from './internal/transport.js';
 import { resolveOptions, type CaerusClientOptions, type ResolvedClientOptions } from './options.js';
+import { Webhooks } from './webhooks/index.js';
 import { GetResourceHoldersListRequest_SortDirection as WireSort } from './generated/sre_service.js';
 import type {
   ConfirmOptions,
@@ -54,6 +55,8 @@ export class CaerusClient implements SharedResourceApi {
   readonly #transport: Transport;
   readonly #endpoint: string;
   readonly #timeoutMs: number;
+
+  readonly webhooks = new Webhooks();
 
   constructor(options: CaerusClientOptions) {
     const resolved: ResolvedClientOptions = resolveOptions(options);
