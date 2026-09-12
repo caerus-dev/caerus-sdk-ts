@@ -395,10 +395,20 @@ same seat, an SDK that could cause that would contradict the product.
 **What it does instead:** every call has a deadline, and `idempotencyKey` lets you retry
 a `take` safely yourself. Read-only calls are harmless and may be retried freely.
 
-### Locks are not covered yet
+### A deadlock only unblocks if the victim lets go
 
-The engine speaks a second protocol for distributed locks. This package does not, so
-`BeginTransaction`, `AcquireLock` and the rest are out of reach from TypeScript for now.
+Distributed locks live under `Dls`. When the engine finds a deadlock it aborts one
+transaction, but the locks that transaction already holds are released by the client, not
+by the engine. `withTransaction` does it for you in a `finally`. If you drive
+`beginTransaction` and `acquireLock` yourself and do not release when the call fails, the
+other transaction keeps waiting until its own timeout and fails as well. The engine only
+cleans up an abandoned transaction after its lifetime plus a grace period, which adds up
+to tens of seconds.
+
+**Use `withTransaction`.** To show that a request is waiting, pass `onQueued` to
+`acquireLock`: it fires once, when the request enters the queue, and never after the lock
+is granted. The critical section still starts after the `await`. The in-memory lock client
+does not queue, so `onQueued` never fires against it.
 
 ### Slow work can outlive its own hold
 

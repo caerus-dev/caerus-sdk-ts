@@ -24,6 +24,7 @@ un Caerus levantado.
 | Deadlock triangular | Se rompe el ciclo sin matar a las tres |
 | Deadlock con estrategia `ALERT` | No se aborta a nadie |
 | `getTransactionStatus` con un lock en la cola | Responde en vez de fallar |
+| `onQueued` mientras un pedido espera en la cola | Avisa una sola vez y antes de que se conceda, aunque el motor mande keep-alives |
 
 ## Qué necesita del ambiente
 
