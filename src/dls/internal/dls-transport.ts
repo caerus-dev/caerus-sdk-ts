@@ -77,7 +77,7 @@ export class DlsTransport {
 
   acquireLockStream(
     request: AcquireLockRequest,
-    options?: { timeoutMs?: number; signal?: AbortSignal }
+    options?: { timeoutMs?: number; signal?: AbortSignal; onQueued?: () => void }
   ): Promise<AcquireLockResponse> {
     if (this.#closed) {
       return Promise.reject(toDlsError(new Error('This DlsClient has been closed')));
@@ -119,6 +119,8 @@ export class DlsTransport {
         options.signal.addEventListener('abort', onAbort);
       }
 
+      let queuedNotified = false;
+
       stream.on('data', (response: AcquireLockResponse) => {
         if (response.status === 1 /* ACQUIRED */ || response.status === 2 /* DENIED */) {
           terminalResponseReceived = true;
@@ -127,7 +129,14 @@ export class DlsTransport {
           // Fundamental para evitar fugas de memoria y sockets colgados:
           stream.cancel();
         } else if (response.status === 3 /* QUEUED */) {
-          // QUEUED, keep waiting
+          if (!queuedNotified && !terminalResponseReceived) {
+            queuedNotified = true;
+            try {
+              options?.onQueued?.();
+            } catch (error) {
+              this.#logger.error('onQueued callback threw', error);
+            }
+          }
         } else {
           // UNSPECIFIED
           this.#logger.error('Received unspecified lock status in stream');

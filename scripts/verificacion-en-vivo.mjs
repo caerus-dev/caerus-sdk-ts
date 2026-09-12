@@ -144,7 +144,21 @@ async function estadoDeTransaccion() {
 
   try {
     await dls.acquireLock(NS_COLA, k, tx1.transactionId, 'EXCLUSIVE');
-    const esperando = dls.acquireLock(NS_COLA, k, tx2.transactionId, 'EXCLUSIVE', { timeoutMs: 8000 }).catch(() => {});
+    let avisosDeCola = 0;
+    let concedidoAntesDelAviso = false;
+    const esperando = dls
+      .acquireLock(NS_COLA, k, tx2.transactionId, 'EXCLUSIVE', {
+        timeoutMs: 8000,
+        onQueued: () => {
+          avisosDeCola += 1;
+        },
+      })
+      .then(
+        () => {
+          concedidoAntesDelAviso = avisosDeCola === 0;
+        },
+        () => {},
+      );
     await new Promise((r) => setTimeout(r, 1500));
 
     const conLock = await dls.getTransactionStatus(tx1.transactionId).catch((e) => e);
@@ -155,6 +169,9 @@ async function estadoDeTransaccion() {
 
     await dls.releaseTransactionLocks(tx1.transactionId).catch(() => {});
     await esperando;
+
+    comprobar('onQueued avisa una sola vez mientras espera', avisosDeCola === 1, `${avisosDeCola} avisos`);
+    comprobar('y avisa antes de que se conceda', !concedidoAntesDelAviso);
   } finally {
     for (const tx of [tx1, tx2]) {
       await dls.releaseTransactionLocks(tx.transactionId).catch(() => {});

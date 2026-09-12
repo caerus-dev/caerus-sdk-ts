@@ -146,6 +146,7 @@ export class DlsClient implements DlsApi {
     const response = await this.#transport.acquireLockStream(request, {
       timeoutMs: options?.timeoutMs,
       signal: options?.signal,
+      onQueued: options?.onQueued,
     });
 
     return assertAcquired(

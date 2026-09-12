@@ -1,8 +1,8 @@
 import { status as GrpcStatus } from '@grpc/grpc-js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { CaerusClient } from '../src/client.js';
-import { CaerusError, ConflictError, ValidationError } from '../src/errors.js';
+import { CaerusClient } from '../src/sre/client.js';
+import { CaerusError, ConflictError, ValidationError } from '../src/sre/errors.js';
 import {
   aHolderResponse,
   aResourceResponse,

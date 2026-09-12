@@ -13,7 +13,7 @@ import {
   type GetResourcesByGroupKeyResponse,
   type ResourceHolderResponse,
   type ResourceResponse,
-} from '../generated/sre_service.js';
+} from '../../generated/sre_service.js';
 
 /**
  * The translation layer between protobuf's shapes and the ones this package publishes.

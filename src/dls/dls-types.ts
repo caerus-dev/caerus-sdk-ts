@@ -47,6 +47,7 @@ export interface AcquireLockOptions {
   idempotencyKey?: string;
   signal?: AbortSignal;
   timeoutMs?: number;
+  onQueued?: () => void;
 }
 
 export interface TransactionOptions {

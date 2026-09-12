@@ -15,7 +15,7 @@ try {
 
 ## El mapeo
 
-Sale de `errors.ts` y refleja lo que el servidor hace en `GrpcGlobalExceptionHandler`.
+Sale de `sre/errors.ts` y refleja lo que el servidor hace en `GrpcGlobalExceptionHandler`.
 No es una convención general de gRPC: es este servidor.
 
 | Estado gRPC | Error del SDK | `code` | Cuándo |

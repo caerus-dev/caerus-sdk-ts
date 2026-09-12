@@ -8,7 +8,7 @@ import {
   ResourceHasActiveHoldsError,
   ResourceNotFoundError,
   toCaerusError,
-} from '../src/errors.js';
+} from '../src/sre/errors.js';
 import { decodeReason, reasonOf } from '../src/internal/error-details.js';
 
 /**

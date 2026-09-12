@@ -8,9 +8,9 @@ import {
   ResourceNotFoundError,
   TimeoutError,
   ValidationError,
-} from '../src/errors.js';
-import { Transport } from '../src/internal/transport.js';
-import { resolveOptions } from '../src/options.js';
+} from '../src/sre/errors.js';
+import { Transport } from '../src/sre/internal/transport.js';
+import { resolveOptions } from '../src/sre/options.js';
 import { aResourceResponse, startFakeEngine, type FakeEngine } from './helpers/fake-engine.js';
 
 const API_KEY = 'no-es-una-clave';

@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { CaerusClient } from '../src/client.js';
-import { ConflictError } from '../src/errors.js';
-import { InMemoryCaerusClient } from '../src/mock.js';
+import { CaerusClient } from '../src/sre/client.js';
+import { ConflictError } from '../src/sre/errors.js';
+import { InMemoryCaerusClient } from '../src/sre/mock.js';
 import {
   aHolderResponse,
   aResourceResponse,
