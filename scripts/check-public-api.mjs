@@ -21,14 +21,21 @@ const FORBIDDEN = [
   'MessageFns',
   'protobufPackage',
   'DeepPartial',
-  // The generated gRPC client and service descriptor
+  // The generated gRPC client and service descriptor (SRE & DLS)
   'SharedResourceEngineClient',
   'SharedResourceEngineService',
-  // Wire-shaped request and response messages
+  'DistributedLockingEngineClient',
+  'DistributedLockingEngineService',
+  // Wire-shaped request and response messages (SRE)
   'CreateResourceRequest',
   'TakeRequest',
   'ResourceHolderResponse',
   'ResourceResponse',
+  // Wire-shaped request and response messages (DLS)
+  'AcquireLockRequest',
+  'AcquireLockResponse',
+  'BeginTransactionRequest',
+  'LockHolderInfo',
   // The protobuf runtime
   '@bufbuild/protobuf',
   'BinaryWriter',

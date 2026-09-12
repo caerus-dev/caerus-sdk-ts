@@ -16,12 +16,12 @@ compared with a checksum.
 
 ## Where this copy came from
 
-| | |
-|---|---|
-| Repository | `caerus-dev/caerus-back` |
-| Path | `data-plane-service/src/main/proto/sre_service.proto` |
-| Commit | `21ba0591e623917b994fcb9f48b8f896183adcc3` |
-| SHA-256 | `85a6f376d22ee15a7ac64959eec3410bb1b10bcc1596e9bd7d2e4a8288b753be` |
+| | SRE | DLS |
+|---|---|---|
+| Repository | `caerus-dev/caerus-back` | `caerus-dev/caerus-back` |
+| Path | `data-plane-service/src/main/proto/sre_service.proto` | `data-plane-service/src/main/proto/dls_service.proto` |
+| Commit | `21ba0591e623917b994fcb9f48b8f896183adcc3` | `84db1da18687a1c5f4e46cb42bfac422fba2e3e8` |
+| SHA-256 | `85a6f376d22ee15a7ac64959eec3410bb1b10bcc1596e9bd7d2e4a8288b753be` | `5d505c2d29609151a091e431fb6f0fd5dcf05e7d6974f38e174ceda4316ab914` |
 
 > The repository's `.gitattributes` marks this file `-text` so git never rewrites its line
 > endings. Without that, a copy taken on Windows comes back with CRLF, the checksums stop

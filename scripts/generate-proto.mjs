@@ -56,4 +56,15 @@ if (!existsSync(join(outDir, 'sre_service.ts'))) {
   fail('buf reported success but produced no client');
 }
 
+import { mkdirSync, renameSync, readFileSync, writeFileSync } from 'node:fs';
+const dlsOutDir = join(outDir, 'dls');
+mkdirSync(dlsOutDir, { recursive: true });
+const dlsServicePath = join(outDir, 'dls_service.ts');
+if (existsSync(dlsServicePath)) {
+  let content = readFileSync(dlsServicePath, 'utf8');
+  content = content.replace(/from "\.\/google\/protobuf\/empty"/g, 'from "../google/protobuf/empty"');
+  writeFileSync(join(dlsOutDir, 'dls_service.ts'), content);
+  rmSync(dlsServicePath);
+}
+
 console.log(`generated the gRPC client into src/generated from ${protoFile}`);
