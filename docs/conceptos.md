@@ -86,11 +86,39 @@ respuesta, y no sabés si el servidor lo procesó. Reintentar puede reservar dos
 La clave de idempotencia lo resuelve. Mandás la misma clave, y el motor devuelve el
 holder que ya había creado en vez de crear otro.
 
+**Una clave identifica un intento, no un recurso.** Es la parte que más se equivoca. La
+clave tiene que ser estable entre los reintentos de *una misma* operación, y distinta
+cuando arranca una operación nueva. Si la derivás de datos que no cambian —el usuario y
+el recurso, por ejemplo— te queda la misma clave para siempre, y a la segunda operación
+el motor te contesta con el resultado de la primera.
+
 ```typescript
+// Mal: la misma clave para siempre para ese alumno y ese curso.
+// Si se da de baja y se reinscribe, recibe el holder viejo, ya liberado.
+idempotencyKey: `inscripcion-${alumnoId}-${cursoId}`
+
+// Bien: un identificador por intento, estable mientras dure ese intento.
+const intento = crypto.randomUUID();
 const holder = await caerus.pooled('analisis-2-com-3').takeMany(1, {
-  idempotencyKey: `inscripcion-${alumnoId}-${cursoId}`,
+  idempotencyKey: `inscripcion-${alumnoId}-${cursoId}-${intento}`,
 });
 ```
+
+**El holder que te devuelve puede estar muerto.** El motor guarda a qué holder
+correspondió cada clave y te devuelve *ese* holder, en el estado en que esté ahora. Si
+mientras tanto se liberó o venció, vas a recibir un `RELEASED` o un `EXPIRED` con
+respuesta exitosa. No es un error del motor: es el contrato de idempotencia, el mismo que
+aplica Stripe —misma clave, misma respuesta—. Mirá el `status` antes de dar la reserva
+por buena.
+
+```typescript
+if (holder.status !== 'PENDING' && holder.status !== 'QUEUED') {
+  // La clave ya se habia usado y ese holder no esta vigente.
+}
+```
+
+**La clave vive 24 horas.** Pasado ese plazo el motor la olvida y la misma clave vuelve a
+tomar de cero.
 
 **Algunas plantillas la exigen.** Si la plantilla tiene `useIdempotency` prendido y no
 mandás clave, el motor rechaza la llamada con un `ValidationError` que dice

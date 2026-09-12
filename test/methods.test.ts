@@ -449,15 +449,15 @@ describe('the business methods', () => {
       let receivedRequest: Record<string, unknown> | undefined;
       engine.on('updateResource', (call, callback) => {
         receivedRequest = call.request as Record<string, unknown>;
-        callback(null, {
-          resourceId: 'res-1',
-          key: 'general_admission',
-          templateId: 'tpl-1',
-          availableAmount: 150,
-          pendingCount: 0,
-          groupKey: 'main_hall',
-          metadata: '',
-        });
+        callback(
+          null,
+          aResourceResponse({
+            key: 'general_admission',
+            availableAmount: 150,
+            groupKey: 'main_hall',
+            metadata: '',
+          }),
+        );
       });
 
       const resource = await caerus.updateResource('general_admission', 50, { groupKey: 'main_hall' });

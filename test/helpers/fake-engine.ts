@@ -8,6 +8,7 @@ import {
 
 import {
   ResourceHolderResponse,
+  ResourceHolderResponse_ResourceHolderStatus,
   ResourceResponse,
   SharedResourceEngineService,
 } from '../../src/generated/sre_service.js';
@@ -176,8 +177,11 @@ function defaultResponseFor(method: EngineMethod): unknown {
     case 'updateResource':
     case 'getResource':
       return aResourceResponse();
-    case 'take':
     case 'confirm':
+      return aHolderResponse({
+        status: ResourceHolderResponse_ResourceHolderStatus.CONFIRMED,
+      });
+    case 'take':
     case 'extend':
     case 'getResourceHolder':
       return aHolderResponse();

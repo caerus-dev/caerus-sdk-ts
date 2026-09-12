@@ -27,16 +27,40 @@ No es una convención general de gRPC: es este servidor.
 | `DEADLINE_EXCEEDED` | `TimeoutError` | `TIMEOUT` | La llamada pasó su deadline |
 | cualquier otro | `CaerusError` | `UNKNOWN` | Incluye `INTERNAL` |
 
-## `ConflictError` junta varias cosas
+## `ConflictError` junta varias cosas, y ahora se distinguen
 
-Cubre quedarse sin stock, confirmar un holder ya confirmado, y liberar uno que venció.
+Cubre quedarse sin stock, operar sobre un holder que ya terminó, y borrar un recurso que
+alguien todavía tiene tomado. Las tres llegan como `FAILED_PRECONDITION`.
 
-No se pueden distinguir. El motor reporta las tres como `FAILED_PRECONDITION`, y lo
-único que las diferencia es el texto del mensaje, que no es contrato: se rompería la
-primera vez que alguien reescriba una frase.
+El motor manda además un código propio, y el SDK lo convierte en subclases:
 
-Si tu código necesita saber cuál de las tres fue, la salida es consultar el estado con
-`getResourceHolder` antes de decidir.
+| Subclase | Cuándo |
+|---|---|
+| `OutOfStockError` | No quedan unidades libres |
+| `HolderNotActiveError` | El holder está `RELEASED`, `CONFIRMED` o `EXPIRED` |
+| `ResourceHasActiveHoldsError` | No se puede borrar: alguien lo tiene tomado |
+| `ResourceHasQueuedRequestsError` | No se puede borrar: hay gente en la cola |
+
+```typescript
+try {
+  await caerus.unitary('butaca_A1').take({ idempotencyKey: clave });
+} catch (e) {
+  if (e instanceof OutOfStockError) return 'ya la tomó otro';
+  if (e instanceof HolderNotActiveError) return 'tu reserva venció, empezá de nuevo';
+  throw e;
+}
+```
+
+**Las cuatro siguen siendo `ConflictError`**, así que el código que ya lo capturaba no
+cambia. Y cualquier error trae `error.reason` con el código tal cual lo mandó el motor
+—`OUT_OF_STOCK`, `TEMPLATE_NOT_FOUND`, los de locks— para los casos que todavía no
+tienen subclase propia.
+
+Nunca hace falta leer el texto del mensaje. El mensaje está escrito para personas y puede
+cambiar; `reason` es contrato.
+
+Si el motor no manda código —una versión vieja— el SDK devuelve el `ConflictError` de
+siempre y `reason` queda en `undefined`.
 
 Vale la pena saber por qué **no** es `RESOURCE_EXHAUSTED`, que a primera vista suena
 mejor para "no hay stock". En gRPC ese código es para límites del sistema —cuotas,
@@ -59,6 +83,11 @@ no, no se sabe.** Puede haber un holder creado del que nunca te enteraste.
 
 Por eso importa la clave de idempotencia: reintentar con la misma clave devuelve el
 holder que ya existía en vez de crear un segundo.
+
+Ojo con qué holder es ese: el motor te devuelve el que corresponda a la clave, en el
+estado en que esté ahora, así que puede venir `RELEASED` o `EXPIRED` con respuesta
+exitosa. Conviene mirar el `status`. Está explicado en
+[conceptos.md](conceptos.md#idempotencia).
 
 ## El SDK no reintenta
 
