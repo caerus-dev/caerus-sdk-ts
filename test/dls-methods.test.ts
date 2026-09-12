@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { FakeDlsEngine, startFakeDlsEngine } from './helpers/fake-dls-engine.js';
 import { DlsClient } from '../src/dls/dls-client.js';
-import { LockDeniedError } from '../src/dls/dls-errors.js';
+import { DlsError, LockDeniedError } from '../src/dls/dls-errors.js';
 import { CaerusError } from '../src/errors.js';
 
 describe('DlsClient methods', () => {
@@ -79,6 +79,33 @@ describe('DlsClient methods', () => {
     expect(error).toBeInstanceOf(CaerusError);
     expect(error.reason).toBe('LOCK_DENIED');
     expect(error.message).toContain('ns1/k1');
+  });
+
+  it('un estado que el SDK no conoce no se hace pasar por un lock denegado', async () => {
+    engine.onStream('acquireLock', (call) => {
+      call.write({ lockId: '', fencingToken: 0, status: 0 });
+      call.end();
+    });
+
+    const error = await client.acquireLock('ns1', 'k1', 'tx-1', 'EXCLUSIVE').catch((e) => e);
+
+    expect(error).toBeInstanceOf(DlsError);
+    expect(error).not.toBeInstanceOf(LockDeniedError);
+  });
+
+  it('un estado que el SDK no conoce se lista como UNKNOWN, no como DENIED', async () => {
+    engine.on('getTransactionStatus', (call, callback) => {
+      callback(null, {
+        status: 'ACTIVE',
+        abortReason: '',
+        expiresAt: 0,
+        locks: [{ namespace: 'ns1', lockKey: 'k1', requestedMode: 1, status: 0 }],
+      });
+    });
+
+    const estado = await client.getTransactionStatus('tx-1');
+
+    expect(estado.locks[0]!.status).toBe('UNKNOWN');
   });
 
   it('a fencing token of zero comes back as undefined, never as zero', async () => {

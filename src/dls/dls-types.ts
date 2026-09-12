@@ -1,6 +1,6 @@
 export type LockMode = 'EXCLUSIVE' | 'SHARED_READ';
 
-export type LockStatus = 'ACQUIRED' | 'DENIED' | 'QUEUED';
+export type LockStatus = 'ACQUIRED' | 'DENIED' | 'QUEUED' | 'UNKNOWN';
 
 export interface Transaction {
   transactionId: string;

@@ -7,7 +7,7 @@ import type {
   LockMode,
   LockStatus,
 } from '../dls-types';
-import { DlsConflictError, LockDeniedError } from '../dls-errors.js';
+import { DlsConflictError, DlsError, LockDeniedError } from '../dls-errors.js';
 
 export function mapLockModeToGrpc(mode: LockMode): GrpcLockMode {
   switch (mode) {
@@ -40,8 +40,7 @@ export function mapGrpcToLockStatus(status: GrpcLockStatus): LockStatus {
     case GrpcLockStatus.QUEUED:
       return 'QUEUED';
     default:
-      // Assuming DENIED for unexpected values to err on the side of safety
-      return 'DENIED';
+      return 'UNKNOWN';
   }
 }
 
@@ -61,6 +60,12 @@ export function assertAcquired(
     throw new LockDeniedError(
       `Caerus denied the lock on ${namespace}/${lockKey}: it is already held by another transaction.`,
       { reason: 'LOCK_DENIED' },
+    );
+  }
+  if (holder.status === 'UNKNOWN') {
+    throw new DlsError(
+      `Caerus returned a lock status for ${namespace}/${lockKey} that this SDK does not recognise, so whether the lock was granted is unknown.`,
+      'UNKNOWN',
     );
   }
   throw new DlsConflictError(
