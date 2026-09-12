@@ -15,7 +15,7 @@ export interface LockHolder {
 export interface ActiveLockHolder {
   lockId: string;
   expiresAt: number;
-  fencingToken: number;
+  fencingToken?: number;
 }
 
 export interface LockStatusResponse {

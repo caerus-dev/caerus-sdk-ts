@@ -11,3 +11,5 @@ src/version.ts
 .idea/
 .env
 .env.*
+
+coverage/

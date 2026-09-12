@@ -203,7 +203,7 @@ export class DlsClient implements DlsApi {
       activeHolders: response.activeHolders.map(h => ({
         lockId: h.lockId,
         expiresAt: Number(h.expiresAt),
-        fencingToken: Number(h.fencingToken),
+        fencingToken: decodeFencingToken(h.fencingToken),
       })),
       pendingQueueSize: response.pendingQueueSize,
     };
