@@ -1,5 +1,9 @@
 import * as crypto from 'crypto';
-import { CaerusSignatureError, CaerusWebhookExpiredError } from './errors.js';
+import {
+  CaerusSignatureError,
+  CaerusWebhookExpiredError,
+  CaerusWebhookPayloadError,
+} from './errors.js';
 import type { CaerusEvent } from './types.js';
 
 export class Webhooks {
@@ -19,6 +23,12 @@ export class Webhooks {
   ): CaerusEvent {
     if (!signatureHeader) {
       throw new CaerusSignatureError('No signature header provided.');
+    }
+
+    if (!secret || !secret.trim()) {
+      throw new CaerusSignatureError(
+        'No signing secret provided: verifying against an empty secret would accept forged events.',
+      );
     }
 
     const headerParts = signatureHeader.split(',').map((p) => p.trim());
@@ -63,6 +73,13 @@ export class Webhooks {
       throw new CaerusSignatureError('No matching signature found.');
     }
 
-    return JSON.parse(rawPayload) as CaerusEvent;
+    try {
+      return JSON.parse(rawPayload) as CaerusEvent;
+    } catch (error) {
+      throw new CaerusWebhookPayloadError(
+        'The webhook signature is valid but the body is not valid JSON.',
+        { cause: error },
+      );
+    }
   }
 }

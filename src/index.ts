@@ -57,6 +57,7 @@ export {
   Webhooks,
   CaerusSignatureError,
   CaerusWebhookExpiredError,
+  CaerusWebhookPayloadError,
   type BaseDomainEventData,
   type BaseCaerusEventEnvelope,
   type CaerusEvent,

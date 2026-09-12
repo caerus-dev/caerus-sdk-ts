@@ -1,5 +1,9 @@
 export { Webhooks } from './webhooks.js';
-export { CaerusSignatureError, CaerusWebhookExpiredError } from './errors.js';
+export {
+  CaerusSignatureError,
+  CaerusWebhookExpiredError,
+  CaerusWebhookPayloadError,
+} from './errors.js';
 export type {
   // Envelope & Base
   BaseDomainEventData,
