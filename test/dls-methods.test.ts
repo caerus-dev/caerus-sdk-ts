@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { FakeDlsEngine, startFakeDlsEngine } from './helpers/fake-dls-engine.js';
 import { DlsClient } from '../src/dls/dls-client.js';
+import { LockDeniedError } from '../src/dls/dls-errors.js';
+import { CaerusError } from '../src/errors.js';
 
 describe('DlsClient methods', () => {
   let engine: FakeDlsEngine;
@@ -53,16 +55,42 @@ describe('DlsClient methods', () => {
     expect(engine.lastRequest.idempotencyKey).toBe('idem1');
   });
 
-  it('acquireLock returns DENIED correctly', async () => {
+  it('acquireLock throws LockDeniedError when the engine denies the lock', async () => {
     engine.onStream('acquireLock', (call) => {
-      call.write({ lockId: '', fencingToken: 0, status: 2 }); // DENIED
+      call.write({ lockId: '', fencingToken: 0, status: 2 });
       call.end();
     });
 
-    const lock = await client.acquireLock('ns1', 'k1', 'tx-1', 'SHARED_READ');
-    
-    expect(lock.status).toBe('DENIED');
-    expect(engine.lastRequest.requestedMode).toBe(2); // SHARED_READ
+    await expect(client.acquireLock('ns1', 'k1', 'tx-1', 'SHARED_READ')).rejects.toThrow(
+      LockDeniedError,
+    );
+    expect(engine.lastRequest.requestedMode).toBe(2);
+  });
+
+  it('a denied lock carries the reason and is catchable as CaerusError', async () => {
+    engine.onStream('acquireLock', (call) => {
+      call.write({ lockId: '', fencingToken: 0, status: 2 });
+      call.end();
+    });
+
+    const error = await client.acquireLock('ns1', 'k1', 'tx-1', 'EXCLUSIVE').catch((e) => e);
+
+    expect(error).toBeInstanceOf(LockDeniedError);
+    expect(error).toBeInstanceOf(CaerusError);
+    expect(error.reason).toBe('LOCK_DENIED');
+    expect(error.message).toContain('ns1/k1');
+  });
+
+  it('a fencing token of zero comes back as undefined, never as zero', async () => {
+    engine.onStream('acquireLock', (call) => {
+      call.write({ lockId: 'lock-1', fencingToken: 0, status: 1 });
+      call.end();
+    });
+
+    const lock = await client.acquireLock('ns1', 'k1', 'tx-1', 'EXCLUSIVE');
+
+    expect(lock.status).toBe('ACQUIRED');
+    expect(lock.fencingToken).toBeUndefined();
   });
 
   it('renewTransaction correctly passes arguments', async () => {

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { InMemoryDlsClient } from '../src/dls/dls-mock';
+import { DlsNotFoundError } from '../src/dls/dls-errors';
 
 describe('DLS withTransaction', () => {
   let client: InMemoryDlsClient;
@@ -65,6 +66,57 @@ describe('DLS withTransaction', () => {
     await expect(client.withTransaction(async (tx) => {
       await tx.acquireLock('ns3', 'key3', 'EXCLUSIVE');
     }, { signal: ac.signal })).rejects.toThrow('AcquireLock aborted by user');
+  });
+
+  it('si la renovacion falla sin remedio, la transaccion se da por perdida', async () => {
+    vi.useRealTimers();
+    client.renewTransaction = async () => {
+      throw new DlsNotFoundError('la transaccion ya no existe');
+    };
+
+    let avisado: Error | undefined;
+
+    const corrida = client.withTransaction(
+      async () => {
+        await new Promise((r) => setTimeout(r, 1500));
+        return 'el callback termino igual';
+      },
+      {
+        timeoutMs: 2000,
+        onTransactionLost: (error) => {
+          avisado = error;
+        },
+      },
+    );
+
+    await expect(corrida).rejects.toThrow(DlsNotFoundError);
+    expect(avisado).toBeInstanceOf(DlsNotFoundError);
+  });
+
+  it('perdida la transaccion, no deja tomar mas locks ni devolver un resultado bueno', async () => {
+    vi.useRealTimers();
+    client.renewTransaction = async () => {
+      throw new DlsNotFoundError('la transaccion ya no existe');
+    };
+
+    let tomarFallo: unknown;
+    let avisoDeAborto = false;
+
+    const corrida = client.withTransaction(
+      async (tx) => {
+        tx.signal.addEventListener('abort', () => {
+          avisoDeAborto = true;
+        });
+        await new Promise((r) => setTimeout(r, 1500));
+        tomarFallo = await tx.acquireLock('ns', 'k', 'EXCLUSIVE').catch((e) => e);
+        return 'no deberia llegar';
+      },
+      { timeoutMs: 2000 },
+    );
+
+    await expect(corrida).rejects.toThrow(DlsNotFoundError);
+    expect(tomarFallo).toBeInstanceOf(DlsNotFoundError);
+    expect(avisoDeAborto).toBe(true);
   });
 });
 

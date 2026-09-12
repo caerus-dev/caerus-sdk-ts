@@ -11,9 +11,11 @@ import type {
   TransactionStatusResponse,
 } from './dls-types';
 import {
+  DlsError,
   DlsNotFoundError,
   DlsConflictError,
   DlsValidationError,
+  LockDeniedError,
 } from './dls-errors';
 
 interface MockLockState {
@@ -53,23 +55,45 @@ export class InMemoryDlsClient implements DlsApi {
     let isClosed = false;
     let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
+    let lost: DlsError | undefined;
+    let consecutiveFailures = 0;
+    const lostController = new AbortController();
+
     const autoRenew = options?.autoRenew ?? true;
     if (autoRenew) {
-      const intervalMs = Math.max(1000, (options?.timeoutMs || 10000) / 2);
+      const lifetimeMs = options?.timeoutMs || 10000;
+      const intervalMs = Math.max(1000, lifetimeMs / 2);
       heartbeatTimer = setInterval(() => {
-        if (!isClosed) {
-          this.renewTransaction(txId, options?.timeoutMs || 10000).catch(() => {});
-        }
+        if (isClosed) return;
+        void (async () => {
+          try {
+            await this.renewTransaction(txId, lifetimeMs);
+            consecutiveFailures = 0;
+          } catch (error) {
+            consecutiveFailures += 1;
+            if (error instanceof DlsNotFoundError || consecutiveFailures >= 2) {
+              lost = error instanceof DlsError ? error : new DlsError(String(error));
+              if (heartbeatTimer) {
+                clearInterval(heartbeatTimer);
+                heartbeatTimer = null;
+              }
+              lostController.abort(lost);
+              options?.onTransactionLost?.(lost);
+            }
+          }
+        })();
       }, intervalMs);
     }
 
     const context: import('./dls-types').TransactionContext = {
       transactionId: txId,
+      signal: lostController.signal,
       acquireLock: async (namespace, lockKey, mode, acquireOpts) => {
         if (isClosed) {
           throw new Error('Transaction context already closed');
         }
-        const signal = acquireOpts?.signal || options?.signal;
+        if (lost) throw lost;
+        const signal = acquireOpts?.signal || options?.signal || lostController.signal;
         const mergedOpts = { ...acquireOpts, signal };
         return this.acquireLock(namespace, lockKey, txId, mode, mergedOpts);
       },
@@ -82,7 +106,9 @@ export class InMemoryDlsClient implements DlsApi {
     };
 
     try {
-      return await callback(context);
+      const result = await callback(context);
+      if (lost) throw lost;
+      return result;
     } finally {
       isClosed = true;
       if (heartbeatTimer) clearInterval(heartbeatTimer);
@@ -115,12 +141,10 @@ export class InMemoryDlsClient implements DlsApi {
     // Conflict detection
     if (activeHolders.length > 0) {
       if (mode === 'EXCLUSIVE' || activeHolders.some(h => h.mode === 'EXCLUSIVE')) {
-        // Return DENIED instead of throwing ConflictError, based on the protocol
-        return {
-          lockId: '',
-          fencingToken: 0,
-          status: 'DENIED',
-        };
+        throw new LockDeniedError(
+          `Caerus denied the lock on ${namespace}/${lockKey}: it is already held by another transaction.`,
+          { reason: 'LOCK_DENIED' },
+        );
       }
     }
 

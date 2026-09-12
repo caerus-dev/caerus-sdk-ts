@@ -8,7 +8,7 @@ export interface Transaction {
 
 export interface LockHolder {
   lockId: string;
-  fencingToken: number;
+  fencingToken?: number;
   status: LockStatus;
 }
 
@@ -53,10 +53,12 @@ export interface TransactionOptions {
   timeoutMs?: number;
   autoRenew?: boolean;
   signal?: AbortSignal;
+  onTransactionLost?: (error: Error) => void;
 }
 
 export interface TransactionContext {
   readonly transactionId: string;
+  readonly signal: AbortSignal;
   acquireLock(
     namespace: string,
     lockKey: string,

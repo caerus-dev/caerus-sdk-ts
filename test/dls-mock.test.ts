@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { InMemoryDlsClient } from '../src/dls/dls-mock.js';
-import { DlsNotFoundError } from '../src/dls/dls-errors.js';
+import { DlsNotFoundError, LockDeniedError } from '../src/dls/dls-errors.js';
 
 describe('InMemoryDlsClient', () => {
   let client: InMemoryDlsClient;
@@ -45,9 +45,9 @@ describe('InMemoryDlsClient', () => {
     const lock1 = await client.acquireLock('namespace', 'key1', tx1.transactionId, 'EXCLUSIVE');
     expect(lock1.status).toBe('ACQUIRED');
 
-    const lock2 = await client.acquireLock('namespace', 'key1', tx2.transactionId, 'EXCLUSIVE');
-    expect(lock2.status).toBe('DENIED');
-    expect(lock2.lockId).toBe('');
+    await expect(
+      client.acquireLock('namespace', 'key1', tx2.transactionId, 'EXCLUSIVE'),
+    ).rejects.toThrow(LockDeniedError);
   });
 
   it('allows shared read locks by multiple transactions', async () => {
@@ -129,9 +129,10 @@ describe('InMemoryDlsClient', () => {
     await client.acquireLock('ns', 'key', tx1.transactionId, 'EXCLUSIVE');
 
     const tx2 = await client.beginTransaction();
-    const lock2 = await client.acquireLock('ns', 'key', tx2.transactionId, 'SHARED_READ');
-    
-    expect(lock2.status).toBe('DENIED');
+
+    await expect(
+      client.acquireLock('ns', 'key', tx2.transactionId, 'SHARED_READ'),
+    ).rejects.toThrow(LockDeniedError);
   });
 
   it('denies EXCLUSIVE if SHARED_READ is held by someone else', async () => {
@@ -139,9 +140,10 @@ describe('InMemoryDlsClient', () => {
     await client.acquireLock('ns', 'key', tx1.transactionId, 'SHARED_READ');
 
     const tx2 = await client.beginTransaction();
-    const lock2 = await client.acquireLock('ns', 'key', tx2.transactionId, 'EXCLUSIVE');
-    
-    expect(lock2.status).toBe('DENIED');
+
+    await expect(
+      client.acquireLock('ns', 'key', tx2.transactionId, 'EXCLUSIVE'),
+    ).rejects.toThrow(LockDeniedError);
   });
 
   it('getTransactionStatus returns all locks requested by the transaction', async () => {

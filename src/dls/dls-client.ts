@@ -18,9 +18,18 @@ import {
 } from './dls-options';
 import { DlsTransport } from './internal/dls-transport';
 import {
+  DeadlockAbortedError,
+  DlsError,
+  DlsNotFoundError,
+  TransactionNotActiveError,
+  toDlsError,
+} from './dls-errors';
+import {
   mapLockModeToGrpc,
   mapGrpcToLockStatus,
   mapGrpcToLockMode,
+  assertAcquired,
+  decodeFencingToken,
 } from './internal/dls-mapping';
 
 export class DlsClient implements DlsApi {
@@ -52,25 +61,49 @@ export class DlsClient implements DlsApi {
     let isClosed = false;
     let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
+    let lost: DlsError | undefined;
+    let consecutiveFailures = 0;
+    const lostController = new AbortController();
+
+    const giveUp = (error: unknown) => {
+      lost = toDlsError(error);
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+      lostController.abort(lost);
+      options?.onTransactionLost?.(lost);
+    };
+
     const autoRenew = options?.autoRenew ?? true;
     if (autoRenew) {
-      const intervalMs = Math.max(1000, (options?.timeoutMs || 10000) / 2);
+      const lifetimeMs = options?.timeoutMs || 10000;
+      const intervalMs = Math.max(1000, lifetimeMs / 2);
       heartbeatTimer = setInterval(() => {
-        if (!isClosed) {
-          this.renewTransaction(txId, options?.timeoutMs || 10000).catch(() => {
-            // Silently fail heartbeats. If it completely expires, the main logic will eventually fail or Caerus will clear it.
-          });
-        }
+        if (isClosed) return;
+        void (async () => {
+          try {
+            await this.renewTransaction(txId, lifetimeMs);
+            consecutiveFailures = 0;
+          } catch (error) {
+            consecutiveFailures += 1;
+            if (isGone(error) || consecutiveFailures >= 2) {
+              giveUp(error);
+            }
+          }
+        })();
       }, intervalMs);
     }
 
     const context: TransactionContext = {
       transactionId: txId,
+      signal: lostController.signal,
       acquireLock: async (namespace, lockKey, mode, acquireOpts) => {
         if (isClosed) {
           throw new Error('Transaction context already closed');
         }
-        const signal = acquireOpts?.signal || options?.signal;
+        if (lost) throw lost;
+        const signal = acquireOpts?.signal || options?.signal || lostController.signal;
         const mergedOpts = { ...acquireOpts, signal };
         return this.acquireLock(namespace, lockKey, txId, mode, mergedOpts);
       },
@@ -83,13 +116,14 @@ export class DlsClient implements DlsApi {
     };
 
     try {
-      return await callback(context);
+      const result = await callback(context);
+      if (lost) throw lost;
+      return result;
     } finally {
       isClosed = true;
       if (heartbeatTimer) {
         clearInterval(heartbeatTimer);
       }
-      // Guarantee resource release, ignoring errors if backend already cleaned up
       await this.releaseTransactionLocks(txId).catch(() => {});
     }
   }
@@ -114,11 +148,15 @@ export class DlsClient implements DlsApi {
       signal: options?.signal,
     });
 
-    return {
-      lockId: response.lockId,
-      fencingToken: Number(response.fencingToken),
-      status: mapGrpcToLockStatus(response.status),
-    };
+    return assertAcquired(
+      {
+        lockId: response.lockId,
+        fencingToken: decodeFencingToken(response.fencingToken),
+        status: mapGrpcToLockStatus(response.status),
+      },
+      namespace,
+      lockKey,
+    );
   }
 
   async renewTransaction(transactionId: string, extraMs: number): Promise<Transaction> {
@@ -193,4 +231,12 @@ export class DlsClient implements DlsApi {
   close(): void {
     this.#transport.close();
   }
+}
+
+function isGone(error: unknown): boolean {
+  return (
+    error instanceof DlsNotFoundError ||
+    error instanceof TransactionNotActiveError ||
+    error instanceof DeadlockAbortedError
+  );
 }
