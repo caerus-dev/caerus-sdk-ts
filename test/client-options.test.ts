@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { CaerusClient } from '../src/client.js';
-import { DEFAULT_ENDPOINT, DEFAULT_TIMEOUT_MS, resolveOptions } from '../src/options.js';
+import { CaerusClient } from '../src/sre/client.js';
+import { DEFAULT_ENDPOINT, DEFAULT_TIMEOUT_MS, resolveOptions } from '../src/sre/options.js';
 
 describe('constructing a client', () => {
   it.each([

@@ -6,21 +6,21 @@
  * exporting it would make the wire format part of the contract with our users.
  */
 
-export { CaerusClient } from './client.js';
-export type { SharedResourceApi } from './api.js';
+export { CaerusClient } from './sre/client.js';
+export type { SharedResourceApi } from './sre/api.js';
 
 export {
   InMemoryCaerusClient,
   type MockMethod,
   type MockOptions,
   type MockResourceSeed,
-} from './mock.js';
+} from './sre/mock.js';
 export {
   DEFAULT_ENDPOINT,
   DEFAULT_TIMEOUT_MS,
   type CaerusClientOptions,
   type CaerusLogger,
-} from './options.js';
+} from './sre/options.js';
 
 export type {
   ConfirmOptions,
@@ -37,11 +37,11 @@ export type {
   TakeOptions,
   UnitaryResource,
   UpdateResourceOptions,
-} from './types.js';
+} from './sre/types.js';
 
+export { CaerusError, type CaerusErrorCode } from './errors.js';
 export {
   AuthenticationError,
-  CaerusError,
   ConflictError,
   HolderNotActiveError,
   OutOfStockError,
@@ -50,8 +50,7 @@ export {
   ResourceNotFoundError,
   TimeoutError,
   ValidationError,
-  type CaerusErrorCode,
-} from './errors.js';
+} from './sre/errors.js';
 
 export {
   Webhooks,
@@ -86,3 +85,4 @@ export {
 export { VERSION } from './version.js';
 
 export * as Dls from './dls/index.js';
+export * as Sre from './sre/index.js';

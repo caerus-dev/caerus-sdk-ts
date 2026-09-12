@@ -1,5 +1,5 @@
 import type { SharedResourceApi } from './api.js';
-import { Webhooks } from './webhooks/index.js';
+import { Webhooks } from '../webhooks/index.js';
 import {
   CaerusError,
   ConflictError,

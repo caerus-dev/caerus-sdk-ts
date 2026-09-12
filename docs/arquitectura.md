@@ -6,26 +6,31 @@
   tu codigo
       │
       ▼
-  CaerusClient          ── la implementacion publica
+  CaerusClient              ── la implementacion publica, en sre/client.ts
       │
       ▼
-  internal/handles      ── unitary() y pooled(), que solo restringen que se puede pedir
+  sre/internal/handles      ── unitary() y pooled(), que solo restringen que se puede pedir
       │
       ▼
-  internal/transport    ── la conexion gRPC: API Key, deadline, credenciales
+  sre/internal/transport    ── la conexion gRPC: API Key, deadline, credenciales
       │
       ▼
-  internal/mapping      ── traduce entre los tipos generados y los del dominio
+  sre/internal/mapping      ── traduce entre los tipos generados y los del dominio
       │
       ▼
-  generated/            ── producido del .proto; nadie de afuera lo ve
+  generated/                ── producido del .proto; nadie de afuera lo ve
       │
       ▼
   el motor, por gRPC
 ```
 
-En sentido inverso, los errores de gRPC pasan por `errors.ts`, que los convierte en la
+En sentido inverso, los errores de gRPC pasan por `sre/errors.ts`, que los convierte en la
 jerarquía de `CaerusError`. Está contado en [errores.md](errores.md).
+
+Los locks repiten el mismo recorrido en `src/dls/`: `DlsClient`, `dls/internal/dls-transport`
+y `dls/internal/dls-mapping`, con sus errores en `dls/dls-errors.ts`. Webhooks vive en
+`src/webhooks/`. Las tres partes comparten una sola clase base, `CaerusError`, en
+`src/errors.ts`.
 
 ## Por qué los tipos generados no se exportan
 
@@ -37,7 +42,7 @@ Si el SDK exportara esos tipos, el formato de cable pasaría a ser parte del con
 los usuarios. Cambiar un campo del `.proto` rompería a todo el mundo aunque el dominio
 no hubiera cambiado en nada.
 
-Por eso hay una capa de traducción en `internal/mapping.ts`, y por eso `npm run build`
+Por eso hay una capa de traducción en `sre/internal/mapping.ts`, y por eso `npm run build`
 corre `scripts/check-public-api.mjs`, que lee el `.d.ts` construido y falla si algún
 tipo generado se filtró. Es una regla que se hace cumplir sola en vez de depender de que
 alguien se acuerde.
@@ -80,7 +85,7 @@ red. Si necesitás probar el vencimiento o un timeout, hacelo contra un motor re
 
 ## El transporte
 
-`internal/transport.ts` es lo único que sabe de gRPC.
+`sre/internal/transport.ts` es lo único que sabe de gRPC.
 
 - **La API Key** va en el header `Authorization: Bearer <key>` en cada llamada.
 - **TLS está prendido por defecto.** Un motor local escucha en texto plano, así que

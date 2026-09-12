@@ -8,7 +8,7 @@ import {
 
 import { toCaerusError } from '../errors.js';
 import type { ResolvedClientOptions } from '../options.js';
-import { SharedResourceEngineClient } from '../generated/sre_service.js';
+import { SharedResourceEngineClient } from '../../generated/sre_service.js';
 
 /**
  * The shape of every unary method on the generated client: request, metadata, options,

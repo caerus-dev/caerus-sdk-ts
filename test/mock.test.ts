@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import type { SharedResourceApi } from '../src/api.js';
-import { ConflictError, ResourceNotFoundError, ValidationError } from '../src/errors.js';
-import { InMemoryCaerusClient } from '../src/mock.js';
+import type { SharedResourceApi } from '../src/sre/api.js';
+import { ConflictError, ResourceNotFoundError, ValidationError } from '../src/sre/errors.js';
+import { InMemoryCaerusClient } from '../src/sre/mock.js';
 
 function aMock(availableAmount = 1) {
   return new InMemoryCaerusClient({
