@@ -8,6 +8,7 @@ tiene la forma que tiene y qué hace el servidor del otro lado.
 | [conceptos.md](conceptos.md) | El modelo de Caerus: plantillas, recursos, holders, el ciclo de vida de una reserva |
 | [arquitectura.md](arquitectura.md) | Cómo está armado el SDK por dentro y por qué |
 | [errores.md](errores.md) | Qué error tira cada cosa y cómo se decide |
+| [webhooks.md](webhooks.md) | Verificación criptográfica y manejo de eventos asíncronos |
 | [probar-contra-caerus-real.md](probar-contra-caerus-real.md) | Levantar un Caerus y correr el SDK contra él |
 
 Para trabajar **sobre** el SDK, arrancá por [`AGENTS.md`](../AGENTS.md).

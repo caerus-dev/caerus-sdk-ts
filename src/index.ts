@@ -53,6 +53,36 @@ export {
   type CaerusErrorCode,
 } from './errors.js';
 
+export {
+  Webhooks,
+  CaerusSignatureError,
+  CaerusWebhookExpiredError,
+  CaerusWebhookPayloadError,
+  type BaseDomainEventData,
+  type BaseCaerusEventEnvelope,
+  type CaerusEvent,
+  type ResourceCreatedData,
+  type ResourceTakenData,
+  type ResourceConfirmedData,
+  type ResourceReleasedData,
+  type ResourceExtendedData,
+  type ResourceExpiredData,
+  type ResourceUpdatedData,
+  type ResourceDeletedData,
+  type ResourceQueuedData,
+  type ResourceTakeFailedData,
+  type LockAcquiredData,
+  type LockReleasedData,
+  type LockAcquireFailedData,
+  type DeadlockDetectedData,
+  type LockAbandonedData,
+  type TransactionStartedData,
+  type TransactionCompletedData,
+  type TransactionAbortedData,
+  type TransactionRenewedData,
+  type TransactionExpiredData,
+} from './webhooks/index.js';
+
 export { VERSION } from './version.js';
 
 export * as Dls from './dls/index.js';

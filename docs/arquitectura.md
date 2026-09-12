@@ -154,3 +154,12 @@ tests, y están en el `.gitignore`.
 El motivo es el mismo en los dos casos: una sola fuente de verdad. El cliente sale del
 `.proto`; la versión sale del `package.json`. Si estuvieran commiteados podrían decir
 algo distinto de su origen, y nadie se enteraría hasta que fuera tarde.
+
+## Módulo de Webhooks
+
+A diferencia de las operaciones de inventario y reservas que viajan por gRPC, el módulo
+de Webhooks (`src/webhooks/`) es un submódulo autónomo y puramente criptográfico. No
+requiere transporte de red ni emite llamadas gRPC: recibe las peticiones ya obtenidas
+por la aplicación del usuario y valida las firmas localmente antes de parsear los
+eventos con tipado discriminado.
+
