@@ -68,6 +68,21 @@ tamaño de mensaje, memoria—, no para estado del negocio. Quedarse sin butacas
 estado perfectamente normal del dominio, no un recurso del sistema agotado. Este SDK ya
 tuvo `RESOURCE_EXHAUSTED` y se revirtió por eso.
 
+## Errores en Distributed Locking (DLS)
+
+En DLS (`src/dls/dls-errors.ts`), los errores específicos del motor de locks se mapean a subclases de `DlsError` mediante el trailer `ErrorInfo.reason`:
+
+| Subclase DLS | `reason` | Estado gRPC | Cuándo ocurre |
+|---|---|---|---|
+| `DeadlockAbortedError` | `DEADLOCK_DETECTED` | `ABORTED` | El detector DFS encontró un ciclo y sacrificó esta transacción como víctima |
+| `TransactionNotActiveError` | `TRANSACTION_NOT_ACTIVE` | `FAILED_PRECONDITION` | La transacción expiró, fue abortada o limpiada por el motor |
+| `LockAlreadyHeldError` | `LOCK_ALREADY_HELD_EXCLUSIVELY` | `ALREADY_EXISTS` | La transacción ya posee ese lock de forma exclusiva |
+| `LockModeMismatchError` | `LOCK_MODE_MISMATCH` | `INVALID_ARGUMENT` | Se pidió un modo incompatible con la plantilla (ej. SHARED_READ en plantilla EXCLUSIVE) |
+| `LockAcquisitionCancelledError`| `LOCK_ACQUISITION_CANCELLED` | `CANCELLED` | El cliente canceló el stream antes de que se concediera el lock |
+| `DlsNotFoundError` | `RESOURCE_NOT_FOUND` | `NOT_FOUND` | La transacción o el recurso no existen |
+
+> 💡 **Nota sobre `status: DENIED`:** Cuando un lock no se puede otorgar (estrategia `FAIL` o timeout de cola superado), el stream gRPC responde con éxito `OK` y payload `{ status: DENIED }`. No se lanza excepción para evitar ensuciar el código del cliente con `try/catch`.
+
 ## `INTERNAL` siempre dice lo mismo
 
 Cuando algo se rompe del lado del servidor, llega un `CaerusError` con

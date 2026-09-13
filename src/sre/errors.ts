@@ -3,7 +3,7 @@ import { status as GrpcStatus } from '@grpc/grpc-js';
 import { CaerusError } from '../errors.js';
 import { reasonOf } from '../internal/error-details.js';
 
-export { CaerusError, type CaerusErrorCode } from '../errors.js';
+export { CaerusError, type CaerusErrorCode, type CaerusErrorReason } from '../errors.js';
 
 /** The resource, template or holder does not exist. */
 export class ResourceNotFoundError extends CaerusError {

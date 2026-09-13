@@ -471,6 +471,37 @@ together, the error mapping, and how to run it against a real engine. It is writ
 Spanish, for the teams building on Caerus. If you are going to change this package,
 [`AGENTS.md`](AGENTS.md) is the place to start.
 
+## Distributed Locking (DLS)
+
+Coordinate background jobs, file access, and multi-resource workflows across distributed workers with mutual exclusion, shared reads, and automatic deadlock resolution.
+
+```typescript
+import { Dls } from '@caerus-dev/sdk';
+
+const dls = new Dls.DlsClient({
+  apiKey: process.env.CAERUS_API_KEY!,
+});
+
+// withTransaction manages acquisition, auto-renewal heartbeats, and automatic lock release in finally:
+await dls.withTransaction(async (tx) => {
+  const lock = await tx.acquireLock('task_processing', 'file:reports_export', 'EXCLUSIVE', {
+    onQueued: () => console.log('Lock is contested; waiting in queue...'),
+  });
+
+  console.log(`Lock acquired with fencing token #${lock.fencingToken}`);
+  // Perform exclusive critical section work safely...
+});
+```
+
+### Key DLS Capabilities
+
+* **`withTransaction(callback, options?)`**: Starts a transaction context, keeps it alive with background heartbeats (`autoRenew`), and guarantees atomic release of all locks on success, failure, or deadlock abort.
+* **`acquireLock(namespace, lockKey, mode, options?)`**: Supports `EXCLUSIVE` and `SHARED_READ` locks. The optional `onQueued` callback notifies you immediately when entering a wait queue.
+* **Fencing Tokens**: Every acquired lock returns a monotonically increasing `fencingToken` (`czxid`) to protect external storage against zombie writes.
+* **Deadlock Detection**: If circular wait conditions occur, Caerus's graph-based deadlock detector aborts the victim transaction with `DeadlockAbortedError`, allowing `withTransaction` to immediately unblock competing workers.
+
+---
+
 ## Webhooks
 
 Verify and handle asynchronous event notifications from Caerus safely.
