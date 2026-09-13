@@ -39,7 +39,12 @@ export type {
   UpdateResourceOptions,
 } from './sre/types.js';
 
-export { CaerusError, type CaerusErrorCode, type CaerusErrorReason } from './errors.js';
+export {
+  CaerusError,
+  type CaerusErrorCode,
+  type CaerusErrorReason,
+  type CaerusErrorOptions,
+} from './errors.js';
 export {
   AuthenticationError,
   ConflictError,

@@ -394,7 +394,8 @@ describe('the business methods', () => {
     const error = await caerus.getResource('seat_A12').catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(ConflictError);
-    expect((error as CaerusError).message).toBe('Holder already confirmed');
+    expect((error as CaerusError).message).toContain('Holder already confirmed');
+    expect((error as CaerusError).requestId).toBeDefined();
   });
 
   /**
@@ -423,7 +424,8 @@ describe('the business methods', () => {
 
       expect(error).toBeInstanceOf(ConflictError);
       expect((error as CaerusError).code).toBe('CONFLICT');
-      expect((error as CaerusError).message).toBe('Out of stock for resource: seat_A12');
+      expect((error as CaerusError).message).toContain('Out of stock for resource: seat_A12');
+      expect((error as CaerusError).requestId).toBeDefined();
     });
 
     it('is no longer an opaque internal error', async () => {

@@ -310,7 +310,11 @@ try {
 | `TimeoutError` | `TIMEOUT` | La llamada superó el deadline configurado |
 | `CaerusError` | `UNKNOWN` | Cualquier otro error interno del servidor |
 
-Cada error incluye además la propiedad tipada `error.reason` con el código canónico del backend (ej: `"OUT_OF_STOCK"`, `"DEADLOCK_DETECTED"`), ideal para estructurar lógica programática mediante la unión de tipos `CaerusErrorReason`.
+Cada error incluye:
+* `error.reason`: El código canónico de negocio del backend (ej: `"OUT_OF_STOCK"`, `"DEADLOCK_DETECTED"`), tipado con `CaerusErrorReason`.
+* `error.requestId`: Identificador único de correlación (ej: `"req_3fa85f64-5717-4562-b3fc-2c963f66afa6"`). Puedes compartir este ID en nuestro servidor de Discord para que ubiquemos la traza exacta de tu solicitud en milisegundos sin compartir datos privados.
+* `error.docUrl`: Enlace directo a la sección de la documentación con las causas y soluciones para ese error específico.
+* `error.message`: Mensaje legible para humanos que incluye el `requestId` y el llamado a soporte.
 
 ---
 

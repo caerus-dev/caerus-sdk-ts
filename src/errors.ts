@@ -34,6 +34,15 @@ export type CaerusErrorReason =
   | 'IDEMPOTENCY_KEY_REQUIRED'
   | 'RESOURCE_NOT_FOUND';
 
+/**
+ * Options passed when creating any CaerusError.
+ */
+export interface CaerusErrorOptions {
+  cause?: unknown;
+  reason?: CaerusErrorReason | string;
+  requestId?: string;
+}
+
 /** Every error this package throws extends this one, so `catch` can take them together. */
 export class CaerusError extends Error {
   readonly code: CaerusErrorCode;
@@ -43,18 +52,35 @@ export class CaerusError extends Error {
    * the message, which is written for people.
    */
   readonly reason?: CaerusErrorReason | string;
+  /**
+   * Correlation ID of the request (e.g. req_3fa85f64-5717-4562-b3fc-2c963f66afa6).
+   * Share this ID when contacting support or troubleshooting in Discord.
+   */
+  readonly requestId?: string;
 
   constructor(
     message: string,
     code: CaerusErrorCode = 'UNKNOWN',
-    options?: { cause?: unknown; reason?: CaerusErrorReason | string },
+    options?: CaerusErrorOptions,
   ) {
-    super(message, options);
+    const enrichedMessage =
+      options?.requestId && !message.includes(options.requestId)
+        ? `${message} (Request ID: ${options.requestId}). Contacta soporte en Discord con este ID.`
+        : message;
+    super(enrichedMessage, options);
     this.name = new.target.name;
     this.code = code;
     this.reason = options?.reason;
+    this.requestId = options?.requestId;
     // Without this, `instanceof` breaks for anyone consuming the CommonJS build from a
     // project that targets ES5.
     Object.setPrototypeOf(this, new.target.prototype);
+  }
+
+  /**
+   * Direct documentation URL explaining error handling and resolutions.
+   */
+  get docUrl(): string {
+    return 'https://github.com/caerus-dev/caerus-sdk-ts/blob/main/docs/errores.md';
   }
 }

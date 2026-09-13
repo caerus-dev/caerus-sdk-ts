@@ -83,13 +83,25 @@ En DLS (`src/dls/dls-errors.ts`), los errores específicos del motor de locks se
 
 > 💡 **Nota sobre `status: DENIED`:** Cuando un lock no se puede otorgar (estrategia `FAIL` o timeout de cola superado), el stream gRPC responde con éxito `OK` y payload `{ status: DENIED }`. No se lanza excepción para evitar ensuciar el código del cliente con `try/catch`.
 
-## `INTERNAL` siempre dice lo mismo
+## `INTERNAL` y Trazabilidad con `error.requestId`
 
-Cuando algo se rompe del lado del servidor, llega un `CaerusError` con
-`Unexpected gRPC error` y nada más. Es a propósito: el servidor no filtra sus internas.
+Cuando ocurre un fallo interno del lado del servidor, llega un `CaerusError` protegiendo las internas del cluster por seguridad. Sin embargo, cada error incluye un identificador único de correlación:
 
-Si ves eso, el detalle está en los logs del data plane. Del lado del cliente no hay más
-información por sacar.
+```typescript
+try {
+  await caerus.unitary('butaca_1').take();
+} catch (error) {
+  if (error instanceof CaerusError) {
+    console.error(`Error: ${error.code} (${error.reason})`);
+    console.error(`Request ID: ${error.requestId}`);
+    console.error(`Guía de ayuda: ${error.docUrl}`);
+  }
+}
+```
+
+* **`error.requestId`**: Identificador único de la solicitud (ej: `req_3fa85f64-5717-4562-b3fc-2c963f66afa6`).
+* **Soporte en Discord**: Puedes ingresar a nuestro canal de `#soporte` en Discord y compartirnos tu `requestId` junto con tu fragmento de código. Con este ID, nuestro equipo puede ubicar la traza exacta en los logs del servidor al milisegundo sin que tengas que compartir claves secretas ni datos de tu aplicación.
+* **`error.docUrl`**: Enlace directo a la documentación específica para ese código de error.
 
 ## `TimeoutError` no significa que no pasó nada
 

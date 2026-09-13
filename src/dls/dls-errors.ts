@@ -1,37 +1,37 @@
 import { status as GrpcStatus } from '@grpc/grpc-js';
-import { CaerusError, type CaerusErrorCode } from '../errors.js';
-import { reasonOf } from '../internal/error-details.js';
+import { CaerusError, type CaerusErrorCode, type CaerusErrorOptions } from '../errors.js';
+import { reasonOf, requestIdOf } from '../internal/error-details.js';
 
 export type DlsErrorCode = CaerusErrorCode;
 
 export class DlsError extends CaerusError {}
 
 export class DlsNotFoundError extends DlsError {
-  constructor(message: string, options?: { cause?: unknown; reason?: string }) {
+  constructor(message: string, options?: CaerusErrorOptions) {
     super(message, 'RESOURCE_NOT_FOUND', options);
   }
 }
 
 export class DlsConflictError extends DlsError {
-  constructor(message: string, options?: { cause?: unknown; reason?: string }) {
+  constructor(message: string, options?: CaerusErrorOptions) {
     super(message, 'CONFLICT', options);
   }
 }
 
 export class DlsValidationError extends DlsError {
-  constructor(message: string, options?: { cause?: unknown; reason?: string }) {
+  constructor(message: string, options?: CaerusErrorOptions) {
     super(message, 'VALIDATION', options);
   }
 }
 
 export class DlsAuthenticationError extends DlsError {
-  constructor(message: string, options?: { cause?: unknown; reason?: string }) {
+  constructor(message: string, options?: CaerusErrorOptions) {
     super(message, 'AUTHENTICATION', options);
   }
 }
 
 export class DlsTimeoutError extends DlsError {
-  constructor(message: string, options?: { cause?: unknown; reason?: string }) {
+  constructor(message: string, options?: CaerusErrorOptions) {
     super(message, 'TIMEOUT', options);
   }
 }
@@ -47,14 +47,14 @@ export class TransactionNotActiveError extends DlsConflictError {}
 export class LockModeMismatchError extends DlsValidationError {}
 
 export class LockAcquisitionCancelledError extends DlsError {
-  constructor(message: string, options?: { cause?: unknown; reason?: string }) {
+  constructor(message: string, options?: CaerusErrorOptions) {
     super(message, 'UNKNOWN', options);
   }
 }
 
 type DlsErrorConstructor = new (
   message: string,
-  options?: { cause?: unknown; reason?: string },
+  options?: CaerusErrorOptions,
 ) => DlsError;
 
 const BY_REASON: Record<string, DlsErrorConstructor | undefined> = {
@@ -72,7 +72,7 @@ interface GrpcLikeError {
   message?: string;
 }
 
-export function toDlsError(error: unknown): DlsError {
+export function toDlsError(error: unknown, clientRequestId?: string): DlsError {
   if (error instanceof DlsError) {
     return error;
   }
@@ -80,7 +80,8 @@ export function toDlsError(error: unknown): DlsError {
   const grpcError = error as GrpcLikeError;
   const message = grpcError?.details || grpcError?.message || 'DLS call failed';
   const reason = reasonOf(error);
-  const options = { cause: error, reason };
+  const requestId = requestIdOf(error) ?? clientRequestId;
+  const options: CaerusErrorOptions = { cause: error, reason, requestId };
 
   const ByReason = reason ? BY_REASON[reason] : undefined;
   if (ByReason) {

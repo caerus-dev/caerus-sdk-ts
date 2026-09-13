@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   credentials,
   Metadata,
@@ -23,13 +24,14 @@ export class DlsTransport {
   readonly #client: DistributedLockingEngineClient;
   readonly #apiKey: string;
   readonly #timeoutMs: number;
-  readonly #logger: any;
+  readonly #logger: ResolvedDlsClientOptions['logger'];
   #closed = false;
 
   constructor(options: ResolvedDlsClientOptions) {
     this.#apiKey = options.apiKey;
     this.#timeoutMs = options.timeoutMs;
     this.#logger = options.logger;
+
     this.#client = new DistributedLockingEngineClient(
       options.endpoint,
       options.tls ? credentials.createSsl() : credentials.createInsecure(),
@@ -40,9 +42,12 @@ export class DlsTransport {
     return this.#client;
   }
 
-  buildMetadata(): Metadata {
+  buildMetadata(clientRequestId?: string): Metadata {
     const metadata = new Metadata();
     metadata.set('authorization', `Bearer ${this.#apiKey}`);
+    if (clientRequestId) {
+      metadata.set('x-request-id', clientRequestId);
+    }
     return metadata;
   }
 
@@ -58,15 +63,16 @@ export class DlsTransport {
       return Promise.reject(toDlsError(new Error('This DlsClient has been closed')));
     }
 
+    const clientRequestId = `req_${randomUUID()}`;
     return new Promise<Response>((resolve, reject) => {
       method.call(
         this.#client,
         request,
-        this.buildMetadata(),
+        this.buildMetadata(clientRequestId),
         this.callOptions(),
         (error: ServiceError | null, response: Response) => {
           if (error) {
-            reject(toDlsError(error));
+            reject(toDlsError(error, clientRequestId));
             return;
           }
           resolve(response);
@@ -87,6 +93,7 @@ export class DlsTransport {
       return Promise.reject(toDlsError(new Error('AcquireLock aborted by user')));
     }
 
+    const clientRequestId = `req_${randomUUID()}`;
     return new Promise<AcquireLockResponse>((resolve, reject) => {
       const callOpts = options?.timeoutMs
         ? { deadline: new Date(Date.now() + options.timeoutMs) }
@@ -94,7 +101,7 @@ export class DlsTransport {
 
       const stream: ClientReadableStream<AcquireLockResponse> = this.#client.acquireLock(
         request,
-        this.buildMetadata(),
+        this.buildMetadata(clientRequestId),
         callOpts,
       );
 
@@ -111,7 +118,7 @@ export class DlsTransport {
           terminalResponseReceived = true;
           stream.cancel();
           cleanupSignal();
-          reject(toDlsError(new Error('AcquireLock aborted by user')));
+          reject(toDlsError(new Error('AcquireLock aborted by user'), clientRequestId));
         }
       };
 
@@ -146,14 +153,14 @@ export class DlsTransport {
       stream.on('error', (error: ServiceError) => {
         if (!terminalResponseReceived) {
           cleanupSignal();
-          reject(toDlsError(error));
+          reject(toDlsError(error, clientRequestId));
         }
       });
 
       stream.on('end', () => {
         if (!terminalResponseReceived) {
           cleanupSignal();
-          reject(toDlsError(new Error('Stream ended without terminal status')));
+          reject(toDlsError(new Error('Stream ended without terminal status'), clientRequestId));
         }
       });
     });

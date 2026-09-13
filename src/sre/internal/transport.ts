@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   credentials,
   Metadata,
@@ -22,11 +23,9 @@ export type UnaryMethod<Request, Response> = (
 ) => ClientUnaryCall;
 
 /**
- * Everything about talking to Caerus that is not about what the calls mean.
- *
- * This is where gRPC stops. Above it there are promises, plain objects and named errors;
+ * Everything that touches gRPC itself lives in here. Above it there are TypeScript types;
  * below it there are channels, metadata and status codes. Keeping the boundary here is
- * what lets the public API stay free of anything generated from the .proto.
+ * what keeps the rest of the codebase from learning about protobuf runtimes.
  */
 export class Transport {
   // ECMAScript private fields, not TypeScript's `private`. The difference matters: the
@@ -41,6 +40,7 @@ export class Transport {
   constructor(options: ResolvedClientOptions) {
     this.#apiKey = options.apiKey;
     this.#timeoutMs = options.timeoutMs;
+
     this.#client = new SharedResourceEngineClient(
       options.endpoint,
       options.tls ? credentials.createSsl() : credentials.createInsecure(),
@@ -59,9 +59,12 @@ export class Transport {
    * A fresh Metadata per call: gRPC may mutate what it is given, and sharing one
    * instance across concurrent calls invites leaking state between them.
    */
-  buildMetadata(): Metadata {
+  buildMetadata(clientRequestId?: string): Metadata {
     const metadata = new Metadata();
     metadata.set('authorization', `Bearer ${this.#apiKey}`);
+    if (clientRequestId) {
+      metadata.set('x-request-id', clientRequestId);
+    }
     return metadata;
   }
 
@@ -85,15 +88,16 @@ export class Transport {
       return Promise.reject(toCaerusError(new Error('This CaerusClient has been closed')));
     }
 
+    const clientRequestId = `req_${randomUUID()}`;
     return new Promise<Response>((resolve, reject) => {
       method.call(
         this.#client,
         request,
-        this.buildMetadata(),
+        this.buildMetadata(clientRequestId),
         this.callOptions(),
         (error: ServiceError | null, response: Response) => {
           if (error) {
-            reject(toCaerusError(error));
+            reject(toCaerusError(error, clientRequestId));
             return;
           }
           resolve(response);

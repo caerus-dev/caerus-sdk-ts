@@ -171,3 +171,22 @@ export function reasonOf(error: unknown): string | undefined {
     return undefined;
   }
 }
+
+/** Digs the request ID out of a gRPC error's trailing metadata. */
+export function requestIdOf(error: unknown): string | undefined {
+  try {
+    const metadata = (error as TrailerCarrier)?.metadata;
+    if (typeof metadata?.get !== 'function') return undefined;
+
+    const entries = metadata.get('x-request-id');
+    if (typeof entries === 'string') return entries;
+    if (Array.isArray(entries) && entries.length > 0) {
+      const first = entries[0];
+      if (typeof first === 'string') return first;
+      if (first instanceof Uint8Array) return new TextDecoder().decode(first);
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}

@@ -1,13 +1,18 @@
 import { status as GrpcStatus } from '@grpc/grpc-js';
 
-import { CaerusError } from '../errors.js';
-import { reasonOf } from '../internal/error-details.js';
+import { CaerusError, type CaerusErrorOptions } from '../errors.js';
+import { reasonOf, requestIdOf } from '../internal/error-details.js';
 
-export { CaerusError, type CaerusErrorCode, type CaerusErrorReason } from '../errors.js';
+export {
+  CaerusError,
+  type CaerusErrorCode,
+  type CaerusErrorReason,
+  type CaerusErrorOptions,
+} from '../errors.js';
 
 /** The resource, template or holder does not exist. */
 export class ResourceNotFoundError extends CaerusError {
-  constructor(message: string, options?: { cause?: unknown; reason?: string }) {
+  constructor(message: string, options?: CaerusErrorOptions) {
     super(message, 'RESOURCE_NOT_FOUND', options);
   }
 }
@@ -21,7 +26,7 @@ export class ResourceNotFoundError extends CaerusError {
  * ConflictError still catches every one of them.
  */
 export class ConflictError extends CaerusError {
-  constructor(message: string, options?: { cause?: unknown; reason?: string }) {
+  constructor(message: string, options?: CaerusErrorOptions) {
     super(message, 'CONFLICT', options);
   }
 }
@@ -45,21 +50,21 @@ export class ResourceHasQueuedRequestsError extends ConflictError {}
 
 /** The request itself was rejected: a bad key, a non-positive amount, and so on. */
 export class ValidationError extends CaerusError {
-  constructor(message: string, options?: { cause?: unknown; reason?: string }) {
+  constructor(message: string, options?: CaerusErrorOptions) {
     super(message, 'VALIDATION', options);
   }
 }
 
 /** The API Key is missing, malformed, unknown or revoked. */
 export class AuthenticationError extends CaerusError {
-  constructor(message: string, options?: { cause?: unknown; reason?: string }) {
+  constructor(message: string, options?: CaerusErrorOptions) {
     super(message, 'AUTHENTICATION', options);
   }
 }
 
 /** The call ran past its deadline. Whether the server did the work is unknown. */
 export class TimeoutError extends CaerusError {
-  constructor(message: string, options?: { cause?: unknown; reason?: string }) {
+  constructor(message: string, options?: CaerusErrorOptions) {
     super(message, 'TIMEOUT', options);
   }
 }
@@ -80,7 +85,7 @@ interface GrpcLikeError {
 
 type ConflictConstructor = new (
   message: string,
-  options?: { cause?: unknown; reason?: string },
+  options?: CaerusErrorOptions,
 ) => ConflictError;
 
 const CONFLICT_BY_REASON: Record<string, ConflictConstructor | undefined> = {
@@ -90,7 +95,7 @@ const CONFLICT_BY_REASON: Record<string, ConflictConstructor | undefined> = {
   RESOURCE_HAS_QUEUED_REQUESTS: ResourceHasQueuedRequestsError,
 };
 
-export function toCaerusError(error: unknown): CaerusError {
+export function toCaerusError(error: unknown, clientRequestId?: string): CaerusError {
   if (error instanceof CaerusError) {
     return error;
   }
@@ -99,7 +104,8 @@ export function toCaerusError(error: unknown): CaerusError {
   // details carries the server's description; message prefixes it with the status name.
   const message = grpcError?.details || grpcError?.message || 'Caerus call failed';
   const reason = reasonOf(error);
-  const options = { cause: error, reason };
+  const requestId = requestIdOf(error) ?? clientRequestId;
+  const options: CaerusErrorOptions = { cause: error, reason, requestId };
 
   switch (grpcError?.code) {
     case GrpcStatus.NOT_FOUND:
@@ -118,3 +124,4 @@ export function toCaerusError(error: unknown): CaerusError {
       return new CaerusError(message, 'UNKNOWN', options);
   }
 }
+

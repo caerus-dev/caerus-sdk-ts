@@ -73,7 +73,8 @@ describe('the transport, against a real gRPC server', () => {
     expect(error).toBeInstanceOf(CaerusError);
     expect((error as CaerusError).code).toBe('RESOURCE_NOT_FOUND');
     // The server's own wording survives, rather than being replaced by ours.
-    expect((error as CaerusError).message).toBe('Resource not found: seat_A12');
+    expect((error as CaerusError).message).toContain('Resource not found: seat_A12');
+    expect((error as CaerusError).requestId).toBeDefined();
   });
 
   /**
@@ -94,7 +95,8 @@ describe('the transport, against a real gRPC server', () => {
 
     expect(error).toBeInstanceOf(expected);
     expect((error as CaerusError).code).toBe(expectedCode);
-    expect((error as CaerusError).message).toBe('from the server');
+    expect((error as CaerusError).message).toContain('from the server');
+    expect((error as CaerusError).requestId).toBeDefined();
   });
 
   /** INTERNAL always arrives opaque: the server refuses to describe its own failures. */
