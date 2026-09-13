@@ -496,7 +496,7 @@ await dls.withTransaction(async (tx) => {
 ### Key DLS Capabilities
 
 * **`withTransaction(callback, options?)`**: Starts a transaction context, keeps it alive with background heartbeats (`autoRenew`), and guarantees atomic release of all locks on success, failure, or deadlock abort.
-* **`acquireLock(namespace, lockKey, mode, options?)`**: Supports `EXCLUSIVE` and `SHARED_READ` locks. The optional `onQueued` callback notifies you immediately when entering a wait queue.
+* **`acquireLock(namespace, lockKey, mode, options?)`**: Supports `EXCLUSIVE` and `SHARED_READ` locks. The optional `onQueued` callback notifies you immediately when the request enters ZooKeeper's wait queue (active for templates using the `QUEUE` strategy under contention; does not fire for `FAIL` or `RETRY`, nor when the lock is acquired immediately without waiting).
 * **Fencing Tokens**: Every acquired lock returns a monotonically increasing `fencingToken` (`czxid`) to protect external storage against zombie writes.
 * **Deadlock Detection**: If circular wait conditions occur, Caerus's graph-based deadlock detector aborts the victim transaction with `DeadlockAbortedError`, allowing `withTransaction` to immediately unblock competing workers.
 
