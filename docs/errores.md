@@ -75,13 +75,18 @@ En DLS (`src/dls/dls-errors.ts`), los errores específicos del motor de locks se
 | Subclase DLS | `reason` | Estado gRPC | Cuándo ocurre |
 |---|---|---|---|
 | `DeadlockAbortedError` | `DEADLOCK_DETECTED` | `ABORTED` | El detector DFS encontró un ciclo y sacrificó esta transacción como víctima |
-| `TransactionNotActiveError` | `TRANSACTION_NOT_ACTIVE` | `FAILED_PRECONDITION` | La transacción expiró, fue abortada o limpiada por el motor |
+| `TransactionNotActiveError` | `TRANSACTION_NOT_ACTIVE` | `FAILED_PRECONDITION` | La transacción ya no está activa: fue completada (`COMPLETED`), cancelada durante la espera (`releaseTransactionLocks`) o expirada por tiempo de vida (`MAX_LIFETIME_EXCEEDED`) |
 | `LockAlreadyHeldError` | `LOCK_ALREADY_HELD_EXCLUSIVELY` | `ALREADY_EXISTS` | La transacción ya posee ese lock de forma exclusiva |
 | `LockModeMismatchError` | `LOCK_MODE_MISMATCH` | `INVALID_ARGUMENT` | Se pidió un modo incompatible con la plantilla (ej. SHARED_READ en plantilla EXCLUSIVE) |
-| `LockAcquisitionCancelledError`| `LOCK_ACQUISITION_CANCELLED` | `CANCELLED` | El cliente canceló el stream antes de que se concediera el lock |
+| `LockAcquisitionCancelledError`| `LOCK_ACQUISITION_CANCELLED` | `CANCELLED` | El cliente canceló el stream antes de que se concediera el lock (ej. mediante `AbortSignal`) |
 | `DlsNotFoundError` | `RESOURCE_NOT_FOUND` | `NOT_FOUND` | La transacción o el recurso no existen |
 
 > 💡 **Nota sobre `status: DENIED`:** Cuando un lock no se puede otorgar (estrategia `FAIL` o timeout de cola superado), el stream gRPC responde con éxito `OK` y payload `{ status: DENIED }`. No se lanza excepción para evitar ensuciar el código del cliente con `try/catch`.
+
+### Cancelación de Locks en Espera (`QUEUED`)
+En la estrategia `QUEUE`, un cliente no recibe un `lockId` mientras está esperando en cola (solo se asigna al conceder el lock con status `ACQUIRED`). Por ello, no se invoca `releaseLock` sobre locks encolados. Para cancelar una espera, existen dos mecanismos:
+1. **Cancelar la llamada gRPC con `AbortSignal`:** Al abortar el stream con `controller.abort()`, el servidor detecta la desconexión del cliente gRPC en milisegundos, remueve el nodo de la cola en ZooKeeper y notifica inmediatamente al siguiente en la fila.
+2. **Cancelar la transacción completa:** Al llamar a `releaseTransactionLocks(transactionId)`, el servidor limpia los znodes de los locks encolados y pasa la transacción a `COMPLETED` (o `ABORTED`), haciendo que el stream en espera falle de inmediato con `TransactionNotActiveError` (`TRANSACTION_NOT_ACTIVE`).
 
 ## `INTERNAL` y Trazabilidad con `error.requestId`
 

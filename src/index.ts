@@ -9,6 +9,9 @@
 export { CaerusClient } from './sre/client.js';
 export type { SharedResourceApi } from './sre/api.js';
 
+export { DlsClient } from './dls/dls-client.js';
+export type { DlsApi } from './dls/dls-api.js';
+
 export {
   InMemoryCaerusClient,
   type MockMethod,
@@ -39,6 +42,19 @@ export type {
   UpdateResourceOptions,
 } from './sre/types.js';
 
+export type {
+  Transaction,
+  LockMode,
+  LockHolder,
+  LockStatus,
+  BeginTransactionOptions,
+  AcquireLockOptions,
+  LockStatusResponse,
+  TransactionStatusResponse,
+  TransactionOptions,
+  TransactionContext,
+} from './dls/dls-types.js';
+
 export {
   CaerusError,
   type CaerusErrorCode,
@@ -56,6 +72,20 @@ export {
   TimeoutError,
   ValidationError,
 } from './sre/errors.js';
+export {
+  DlsError,
+  DlsNotFoundError,
+  DlsConflictError,
+  DlsValidationError,
+  DlsAuthenticationError,
+  DlsTimeoutError,
+  DeadlockAbortedError,
+  LockDeniedError,
+  LockAlreadyHeldError,
+  TransactionNotActiveError,
+  LockModeMismatchError,
+  LockAcquisitionCancelledError,
+} from './dls/dls-errors.js';
 
 export {
   Webhooks,
