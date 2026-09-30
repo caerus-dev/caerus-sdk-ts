@@ -81,7 +81,7 @@ En DLS (`src/dls/dls-errors.ts`), los errores específicos del motor de locks se
 | `LockAcquisitionCancelledError`| `LOCK_ACQUISITION_CANCELLED` | `CANCELLED` | El cliente canceló el stream antes de que se concediera el lock (ej. mediante `AbortSignal`) |
 | `DlsNotFoundError` | `RESOURCE_NOT_FOUND` | `NOT_FOUND` | La transacción o el recurso no existen |
 
-> 💡 **Nota sobre `status: DENIED`:** Cuando un lock no se puede otorgar (estrategia `FAIL` o timeout de cola superado), el stream gRPC responde con éxito `OK` y payload `{ status: DENIED }`. No se lanza excepción para evitar ensuciar el código del cliente con `try/catch`.
+> 💡 **Nota sobre `status: DENIED`:** Cuando un lock no se puede otorgar (estrategia `FAIL` o reintentos agotados), el motor responde el stream con éxito `OK` y payload `{ status: DENIED }`, sin error gRPC. El SDK no lo devuelve como valor: `acquireLock` lo convierte en `LockDeniedError` con `reason: 'LOCK_DENIED'`, para que un lock denegado no pueda confundirse con uno concedido.
 
 ### Cancelación de Locks en Espera (`QUEUED`)
 En la estrategia `QUEUE`, un cliente no recibe un `lockId` mientras está esperando en cola (solo se asigna al conceder el lock con status `ACQUIRED`). Por ello, no se invoca `releaseLock` sobre locks encolados. Para cancelar una espera, existen dos mecanismos:
