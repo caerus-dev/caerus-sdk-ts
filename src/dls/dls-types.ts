@@ -63,9 +63,9 @@ export interface AcquireLockOptions {
   /**
    * Callback opcional que se invoca cuando la solicitud entra efectivamente a la cola de espera de ZooKeeper.
    *
-   * Se ejecuta exclusivamente cuando la plantilla tiene estrategia `QUEUE` y el recurso está ocupado
-   * por otra transacción (contención). No se dispara en estrategias `FAIL` o `RETRY`, ni cuando el lock
-   * se adquiere de inmediato sin espera previa.
+   * Solo con estrategia `QUEUE`; no se dispara en `FAIL` ni `RETRY`. Avisa una sola vez y nunca después
+   * de conceder el lock. Con `QUEUE` el motor encola todo pedido, así que también avisa cuando el lock
+   * estaba libre y se concede enseguida.
    */
   onQueued?: () => void;
 }

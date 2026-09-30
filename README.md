@@ -217,7 +217,7 @@ await dls.withTransaction(async (tx) => {
 ### Capacidades principales de DLS
 
 * **`withTransaction(callback, options?)`**: Inicia un contexto transaccional, envía latidos periódicos de renovación (`autoRenew`) y garantiza la liberación atómica de todos los locks al finalizar, fallar o ser abortado.
-* **`acquireLock(namespace, lockKey, mode, options?)`**: Soporta modos `EXCLUSIVE` y `SHARED_READ`. El callback opcional `onQueued` notifica en tiempo real cuando la petición entra efectivamente a la cola de espera de ZooKeeper (activo en plantillas con estrategia `QUEUE` bajo contención; no se dispara en `FAIL` ni `RETRY`, ni cuando el lock se adquiere inmediatamente sin espera).
+* **`acquireLock(namespace, lockKey, mode, options?)`**: Soporta modos `EXCLUSIVE` y `SHARED_READ`. El callback opcional `onQueued` notifica en tiempo real cuando la petición entra efectivamente a la cola de espera de ZooKeeper (solo en plantillas con estrategia `QUEUE`; no se dispara en `FAIL` ni `RETRY`). Avisa una sola vez y nunca después de conceder el lock. Ojo: con `QUEUE` el motor encola todo pedido, así que también avisa cuando el lock estaba libre y se concede enseguida. Para saber si alguien más lo tiene, usá `getLockStatus`.
 * **Tokens de Fencing Monótonos (`fencingToken`)**: Cada lock concedido devuelve un contador monótonamente creciente (`czxid` de ZooKeeper) para prevenir escrituras de *workers zombies* en almacenamientos externos (según el patrón de Martin Kleppmann).
 * **Resolución Automática de Deadlocks**: Si dos workers caen en una espera circular cruzada, el detector DFS del backend aborta determinísticamente a la víctima con `DeadlockAbortedError`, liberando sus locks para que el ganador continúe de inmediato.
 
